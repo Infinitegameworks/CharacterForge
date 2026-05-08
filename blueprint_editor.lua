@@ -1,4 +1,4 @@
-local blueprint = require("blueprint")
+local blueprint = require 'blueprint'
 
 local blueprintEditor = {}
 

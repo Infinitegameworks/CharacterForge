@@ -59,14 +59,13 @@ function blueprint.writeBlueprintSchema(sprite, schema)
     }
   end
 
-  sprite.properties(PK) = {
-    schema_version = SCHEMA_VERSION,
-    type = "blueprint",
-    character_name = schema.character_name or "",
-    body_parts = bodyParts,
-    variants = variants,
-    animations = animations,
-  }
+  local props = sprite.properties(PK)
+  props.schema_version = SCHEMA_VERSION
+  props.type = "blueprint"
+  props.character_name = schema.character_name or ""
+  props.body_parts = bodyParts
+  props.variants = variants
+  props.animations = animations
 
   return true
 end
@@ -123,17 +122,16 @@ function blueprint.writeAnimationData(sprite, data)
     end
   end
 
-  sprite.properties(PK) = {
-    schema_version = SCHEMA_VERSION,
-    type = "animation",
-    blueprint_ref = data.blueprint_ref or "",
-    character_name = data.character_name or "",
-    animation_name = data.animation_name or "",
-    cached_schema = cachedSchema,
-    last_validated = data.last_validated or 0,
-    validation_result = data.validation_result or "unknown",
-    layer_status = layerStatus,
-  }
+  local props = sprite.properties(PK)
+  props.schema_version = SCHEMA_VERSION
+  props.type = "animation"
+  props.blueprint_ref = data.blueprint_ref or ""
+  props.character_name = data.character_name or ""
+  props.animation_name = data.animation_name or ""
+  props.cached_schema = cachedSchema
+  props.last_validated = data.last_validated or 0
+  props.validation_result = data.validation_result or "unknown"
+  props.layer_status = layerStatus
 
   return true
 end
@@ -351,7 +349,7 @@ function blueprint.showRegisterDialog()
     return
   end
 
-  local validator = require("validator")
+  local validator = require 'validator'
   local result = validator.validate(spr, {
     body_parts = schema.body_parts,
     variants = schema.variants,

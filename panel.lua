@@ -1,6 +1,11 @@
-local blueprint = require("blueprint")
-local validator = require("validator")
-local utils = require("ui.utils")
+local blueprint = require 'blueprint'
+local validator = require 'validator'
+local utils = require 'utils'
+
+local function log(msg)
+  local f = io.open(app.fs.joinPath(app.fs.tempPath, "characterforge.log"), "a")
+  if f then f:write(os.date("%H:%M:%S") .. " [panel] " .. msg .. "\n"); f:flush(); f:close() end
+end
 
 local panel = {}
 
@@ -15,6 +20,10 @@ local spriteLayerNameHandler = nil
 local siteChangeHandler = nil
 
 local lastValidation = nil
+local lastCheckedFilename = nil
+
+local _blueprintModule = nil
+local _blueprintEditorModule = nil
 
 local function disconnectSpriteEvents()
   if currentSprite and spriteChangeHandler then
@@ -53,24 +62,28 @@ local function runValidation()
 end
 
 local function onSpriteChange(ev)
-  if debounceTimer then
-    debounceTimer:stop()
-  end
-  debounceTimer = Timer{
-    interval = 0.5,
-    ontick = function(timer)
-      timer:stop()
-      local newHash = validator.buildLayerTreeHash(currentSprite)
-      if newHash ~= cachedLayerHash then
-        runValidation()
-      end
+  local ok, err = pcall(function()
+    if debounceTimer then
+      debounceTimer:stop()
     end
-  }
-  debounceTimer:start()
+    debounceTimer = Timer{
+      interval = 0.5,
+      ontick = function()
+        debounceTimer:stop()
+        local newHash = validator.buildLayerTreeHash(currentSprite)
+        if newHash ~= cachedLayerHash then
+          runValidation()
+        end
+      end
+    }
+    debounceTimer:start()
+  end)
+  if not ok then log("CF onSpriteChange error: " .. tostring(err)) end
 end
 
 local function onLayerName(ev)
-  runValidation()
+  local ok, err = pcall(runValidation)
+  if not ok then log("CF onLayerName error: " .. tostring(err)) end
 end
 
 local function connectSpriteEvents(sprite)
@@ -81,8 +94,6 @@ local function connectSpriteEvents(sprite)
   spriteChangeHandler = sprite.events:on("change", onSpriteChange)
   spriteLayerNameHandler = sprite.events:on("layername", onLayerName)
 end
-
-local lastCheckedFilename = nil
 
 local function checkSchemaFreshness(spr)
   if not spr or not spr.filename then return end
@@ -111,52 +122,33 @@ local function checkSchemaFreshness(spr)
 
   if not schema then return end
 
-  local cachedTimestamp = 0
-  if data.cached_schema and data.cached_schema.cache_timestamp then
-    cachedTimestamp = data.cached_schema.cache_timestamp
-  end
-
+  local cachedParts = data.cached_schema and data.cached_schema.body_parts or {}
+  local cachedVariants = data.cached_schema and data.cached_schema.variants or {}
   local needsRefresh = false
-  if cachedTimestamp == 0 then
+
+  if #cachedParts ~= #(schema.body_parts or {}) or #cachedVariants ~= #(schema.variants or {}) then
     needsRefresh = true
   else
-    local cachedParts = data.cached_schema and data.cached_schema.body_parts or {}
-    local cachedVariants = data.cached_schema and data.cached_schema.variants or {}
-    if #cachedParts ~= #(schema.body_parts or {}) or #cachedVariants ~= #(schema.variants or {}) then
-      needsRefresh = true
-    else
-      for i, part in ipairs(schema.body_parts or {}) do
-        if not cachedParts[i] or cachedParts[i].name ~= part.name then
+    for i, part in ipairs(schema.body_parts or {}) do
+      if not cachedParts[i] or cachedParts[i].name ~= part.name then
+        needsRefresh = true
+        break
+      end
+    end
+    if not needsRefresh then
+      for i, v in ipairs(schema.variants or {}) do
+        if not cachedVariants[i] or cachedVariants[i].name ~= v.name then
           needsRefresh = true
           break
-        end
-      end
-      if not needsRefresh then
-        for i, v in ipairs(schema.variants or {}) do
-          if not cachedVariants[i] or cachedVariants[i].name ~= v.name then
-            needsRefresh = true
-            break
-          end
         end
       end
     end
   end
 
   if needsRefresh then
-    local diff = #(schema.body_parts or {}) - #(data.cached_schema and data.cached_schema.body_parts or {})
-    local msg = "Blueprint updated"
-    if diff > 0 then
-      msg = msg .. " — " .. diff .. " new requirement(s) detected"
-    elseif diff < 0 then
-      msg = msg .. " — " .. math.abs(diff) .. " requirement(s) removed"
-    else
-      msg = msg .. " — structure changed"
-    end
-    msg = msg .. ". Accept update?"
-
     local accept = app.alert{
       title = "CharacterForge",
-      text = msg,
+      text = "Blueprint has been updated. Accept new schema?",
       buttons = { "Accept", "Dismiss" }
     }
     if accept == 1 then
@@ -167,21 +159,25 @@ end
 
 local function onSiteChange()
   if isRefreshingCache then return end
-
-  local spr = app.activeSprite
-  if spr ~= currentSprite then
-    connectSpriteEvents(spr)
-    checkSchemaFreshness(spr)
-    runValidation()
-  end
+  local ok, err = pcall(function()
+    local spr = app.activeSprite
+    if spr ~= currentSprite then
+      connectSpriteEvents(spr)
+      checkSchemaFreshness(spr)
+      runValidation()
+    end
+  end)
+  if not ok then log("CF onSiteChange error: " .. tostring(err)) end
 end
 
 local function onPaint(ev)
+  local ok, err = pcall(function()
   local gc = ev.context
-  local bounds = gc.width and { width = gc.width, height = gc.height }
-    or { width = 200, height = 150 }
+  local w = 240
+  local h = 200
 
-  gc:drawThemeRect("sunken_normal", Rectangle(0, 0, bounds.width, bounds.height))
+  gc.color = utils.COLOR_BG
+  gc:fillRect(Rectangle(0, 0, w, h))
 
   if not currentSprite then
     gc.color = utils.COLOR_TEXT
@@ -190,8 +186,10 @@ local function onPaint(ev)
   end
 
   if not blueprint.isAnimation(currentSprite) then
-    gc.color = utils.COLOR_TEXT
+    gc.color = utils.COLOR_UNKNOWN
     gc:fillText("Not a CharacterForge animation", 8, 8)
+    gc.color = utils.COLOR_TEXT
+    gc:fillText("Use the buttons below to get started.", 8, 24)
     return
   end
 
@@ -209,7 +207,7 @@ local function onPaint(ev)
 
   if not data.cached_schema then
     gc.color = utils.COLOR_WARN
-    gc:fillText("No cached schema — register to a blueprint", 8, y)
+    gc:fillText("No cached schema", 8, y)
     return
   end
 
@@ -220,15 +218,13 @@ local function onPaint(ev)
   if lastValidation then
     for _, ls in ipairs(lastValidation.layer_status or {}) do
       local color = utils.COLOR_PASS
-      local hasErrors = false
       for _, err in ipairs(lastValidation.errors or {}) do
         if string.find(err, ls.part, 1, true) then
           color = utils.COLOR_FAIL
-          hasErrors = true
           break
         end
       end
-      if not hasErrors then
+      if color ~= utils.COLOR_FAIL then
         for _, warn in ipairs(lastValidation.warnings or {}) do
           if string.find(warn, ls.part, 1, true) then
             color = utils.COLOR_WARN
@@ -244,32 +240,26 @@ local function onPaint(ev)
       y = y + 14
     end
 
+    y = y + 4
     if #lastValidation.errors > 0 then
-      y = y + 4
       gc.color = utils.COLOR_FAIL
       gc:fillText(#lastValidation.errors .. " error(s)", 8, y)
     elseif #lastValidation.warnings > 0 then
-      y = y + 4
       gc.color = utils.COLOR_WARN
       gc:fillText(#lastValidation.warnings .. " warning(s)", 8, y)
     else
-      y = y + 4
       gc.color = utils.COLOR_PASS
       gc:fillText("All checks pass", 8, y)
     end
   end
-
-  y = y + 16
-  if data.blueprint_ref and data.blueprint_ref ~= "" then
-    local bpPath = app.fs.joinPath(app.fs.filePath(currentSprite.filename), data.blueprint_ref)
-    if not app.fs.isFile(bpPath) then
-      gc.color = utils.COLOR_WARN
-      gc:fillText("Blueprint not found — using cached schema", 8, y)
-    end
-  end
+  end)
+  if not ok then log("CF onPaint error: " .. tostring(err)) end
 end
 
-function panel.toggle()
+function panel.toggle(blueprintMod, blueprintEditorMod)
+  if blueprintMod then _blueprintModule = blueprintMod end
+  if blueprintEditorMod then _blueprintEditorModule = blueprintEditorMod end
+
   if dlg then
     panel.close()
   else
@@ -295,14 +285,50 @@ function panel.open()
       dlg = nil
       currentSprite = nil
       lastValidation = nil
+      lastCheckedFilename = nil
     end
   }
 
   dlg:canvas{
     id = "statusCanvas",
-    width = 220,
-    height = 180,
+    width = 240,
+    height = 200,
     onpaint = onPaint,
+  }
+
+  dlg:separator{ text = "Actions" }
+
+  dlg:button{
+    id = "btnCreateBlueprint",
+    text = "Create Blueprint...",
+    onclick = function()
+      if _blueprintEditorModule then
+        local ok, err = pcall(_blueprintEditorModule.showCreateDialog)
+        if not ok then app.alert("Error: " .. tostring(err)) end
+      end
+    end
+  }
+
+  dlg:button{
+    id = "btnNewAnimation",
+    text = "New Animation...",
+    onclick = function()
+      if _blueprintModule then
+        local ok, err = pcall(_blueprintModule.showNewAnimationDialog)
+        if not ok then app.alert("Error: " .. tostring(err)) end
+      end
+    end
+  }
+
+  dlg:button{
+    id = "btnRegister",
+    text = "Register Animation...",
+    onclick = function()
+      if _blueprintModule then
+        local ok, err = pcall(_blueprintModule.showRegisterDialog)
+        if not ok then app.alert("Error: " .. tostring(err)) end
+      end
+    end
   }
 
   dlg:show{ wait = false }
@@ -317,7 +343,5 @@ function panel.close()
     dlg:close()
   end
 end
-
-panel.isRefreshingCache = isRefreshingCache
 
 return panel
