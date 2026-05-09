@@ -85,6 +85,101 @@ debounceTimer = Timer{ interval=0.5, ontick=function() debounceTimer:stop() end 
 - `pcall(require, 'modulename')` catches load errors and lets the extension continue partially
 - Always log module load status on startup to diagnose missing/broken modules
 
+## Schema Architecture (v2)
+
+CharacterForge uses a normalized schema model with stable IDs for rename-safe references.
+
+### Hierarchy: Part → Slot → Variant
+- **Parts** are top-level body groups (head, torso, left_arm...)
+- **Slots** are equipment positions within a part (default, armor_slot, accessory...)
+- **Variants** are visual alternatives within a slot (base, armor, damaged...)
+- Each level has a stable `id` (e.g., `part_head`, `slot_default`, `variant_base`) and a display `name`
+
+### ID-Based Layer Identity
+Every managed layer gets extension properties marking its role:
+```lua
+blueprint.setLayerIdentity(layer, "part", "part_head")
+blueprint.setLayerIdentity(layer, "slot", "slot_default")
+blueprint.setLayerIdentity(layer, "variant", "variant_base")
+```
+Lookup: `blueprint.findLayerByIdOrName(layers, kind, id, name)` — tries ID first, falls back to name.
+
+### normalizeSchema()
+Central function that takes any schema (v1 flat variants, v2 with slots, partial data) and produces a fully normalized structure with IDs, default slots, and base variant guaranteed. Always call this before reading or comparing schemas.
+
+### cleanArray()
+Helper that rebuilds any array into a clean sequential table — required before writing to extension properties (AD6 compliance).
+
+### Default Slot Collapsing
+When a part has only one slot called "default", variants can live directly under the part layer (no intermediate slot group). `getSlotContainer()` and `findVariantLayer()` handle this transparently.
+
+## Plugin Preferences (plugin.preferences)
+
+- `plugin.preferences` is a Lua table auto-saved/restored across sessions
+- Pass it to modules via `blueprint.setPreferences(plugin.preferences)` in `init()`
+- Used for: `recent_blueprints` (MRU list), `project_roots` (search dirs), `save_mode` ("block"/"warn")
+- MRU list capped at 12 entries, most recent first
+
+## Blueprint Discovery
+
+`blueprint.findBlueprints()` searches for blueprint files:
+1. Recent blueprints from `plugin.preferences` (instant, no file scan)
+2. Current sprite's directory + parent directory
+3. Configured project root directories
+4. Only opens files with "blueprint" in the filename (optimization)
+5. Checks if already-active sprite matches path to avoid redundant open/close
+
+Dialog pattern: `blueprintDialog(title)` returns a dialog with both a combobox of known blueprints AND a file picker fallback. `selectedBlueprintPath(dlg, byLabel)` resolves which one the user chose.
+
+## Layer Structure Repair
+
+`blueprint.ensureLayerStructure(sprite, schema, options)`:
+- Creates missing part/slot/variant groups
+- Optionally renames layers to match schema (`options.rename = true`)
+- Sets layer identity properties on all managed groups
+- Returns `{ created = N, renamed = N }` count
+
+`blueprint.syncVariantFrames(sprite, schema)`:
+- For each variant, creates empty cels to match base variant frame count
+- Uses `firstImageLayer()` to find or create a drawable layer inside variant groups
+
+## Intentionally Absent Variants
+
+A variant layer can be marked `intentionally_absent = true` via `blueprint.toggleActiveVariantAbsent()`. This tells the validator to skip frame-count checks for that variant — useful when a variant doesn't apply to a specific animation but the slot structure requires it to exist.
+
+## Visibility Controls
+
+Layer visibility helpers for artist workflow:
+- `soloActivePart(sprite)` — shows only the selected body part
+- `soloActiveVariant(sprite)` — shows only the selected variant across all parts
+- `showAllManagedLayers(sprite)` — reveals everything
+- `setSlotVisibility(sprite, schema, slotName, mode)` — solo/show/hide a specific slot
+
+## Canvas-Based Panel with Interactive Chips
+
+The status panel uses both native dialog widgets AND a canvas for the validation preview:
+- Canvas draws slot filter "chips" (clickable via `onmousedown` hit testing)
+- `slotChipRects` tracks chip bounds for click detection
+- `drawBlueprintPreview()` for blueprint files, `drawValidationPreview()` for animation files
+- Variant cells show `[B]`ase/`[V]`ariant/`[S]`tate labels with status colors
+
+## Blueprint Editor (Comma-Separated Input)
+
+The create/edit dialogs use comma-separated text entry instead of add/remove buttons:
+- `parseList(text)` splits comma/newline/semicolon-separated input, deduplicates
+- One entry field per concept (parts, slots, variants, states, animations)
+- Edit dialog is non-modal, commits changes immediately via `app.transaction()`
+- Slot templates are derived from existing schema when adding new parts
+
+## Create Blueprint From Current Sprite
+
+`blueprint.schemaFromSprite(sprite, name)`:
+- Reads existing layer hierarchy and infers schema
+- Top-level groups → parts
+- If a group's children have nested groups → slots detected
+- Otherwise → single "default" slot with child groups as variants
+- Sets identity properties on all discovered layers
+
 ## Common Pitfalls
 
 1. **Flat structure required** — don't use subdirectories for modules
@@ -95,5 +190,9 @@ debounceTimer = Timer{ interval=0.5, ontick=function() debounceTimer:stop() end 
 6. **Sprite event leak on tab switch** — unsubscribe from old sprite before subscribing to new one
 7. **Save hook covers 3 commands** — SaveFile, SaveFileAs, SaveFileCopyAs. Missing any = validation bypass.
 8. **aftercommand for metadata writes** — writing properties in `beforecommand` may not persist in the save (data may already be serialized). Use `aftercommand` instead.
-9. **Array tables must be sequential** — `is_array_table()` checks integer keys starting at 1. Never use `table.remove()` then reassign to properties. Rebuild the full table.
+9. **Array tables must be sequential** — `is_array_table()` checks integer keys starting at 1. Never use `table.remove()` then reassign to properties. Rebuild the full table via `cleanArray()`.
 10. **`app.apiVersion`** — check at the top of init(). Version 23+ required for extension properties, Timer, events.
+11. **Always call normalizeSchema()** before reading, comparing, or writing schemas. Raw properties may have missing IDs, old-format variants, or no default slot.
+12. **Don't delete Layer 1** — rename to "Reference" instead. Deleting all image layers causes the palette panel to go black.
+13. **openSpriteForPath()** — check if the sprite is already the active sprite before calling `app.open()`. Avoids tab flashing and unnecessary file I/O.
+14. **Wrap schema comparison in signatures** — `schemaSignature()` produces a deterministic string for comparison. Don't compare raw tables.
