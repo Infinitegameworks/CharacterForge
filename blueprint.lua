@@ -918,7 +918,7 @@ function blueprint.showRegisterDialog()
     defaultAnimName = defaultAnimName:gsub("^%w+_", "")
   end
 
-  local dlg, byLabel = blueprintDialog("Register Animation to Blueprint")
+  local dlg, byLabel = blueprintDialog("Link Animation to Character")
   dlg:entry{ id = "animName", label = "Animation:", text = defaultAnimName }
   dlg:button{ id = "register", text = "Register" }
   dlg:button{ id = "cancel", text = "Cancel" }
@@ -956,15 +956,15 @@ function blueprint.showRegisterDialog()
   local result = validator.validate(spr, schema)
 
   if #result.errors > 0 or #result.warnings > 0 then
-    local msg = "Validation results for this file:\n\n"
+    local msg = "Check results for this file:\n\n"
     for _, err in ipairs(result.errors) do msg = msg .. "[ERROR] " .. err .. "\n" end
     for _, warn in ipairs(result.warnings) do msg = msg .. "[WARN] " .. warn .. "\n" end
     if repair.created > 0 then
-      msg = msg .. "\nCreated " .. tostring(repair.created) .. " missing group(s) before validation."
+      msg = msg .. "\nCreated " .. tostring(repair.created) .. " missing group(s) before checking."
     end
     msg = msg .. "\nRegister anyway?"
     local proceed = app.alert{
-      title = "Validation Issues",
+      title = "Status Issues",
       text = msg,
       buttons = { "Register", "Cancel" },
     }
@@ -1015,7 +1015,7 @@ function blueprint.showRegisterDialog()
   if shouldCloseBlueprint then bpSprite:close() end
   blueprint.rememberBlueprint(bpPath)
 
-  app.alert("Registered '" .. animName .. "' to " .. charName .. " blueprint.")
+  app.alert("Linked '" .. animName .. "' to " .. charName .. " character.")
 end
 
 function blueprint.showCreateFromCurrentDialog()

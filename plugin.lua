@@ -110,7 +110,7 @@ function init(plugin)
 
     plugin:newCommand{
       id = "cfRegisterAnimation",
-      title = "CharacterForge: Register Animation",
+      title = "CharacterForge: Link Animation",
       group = "sprite_properties",
       onclick = function()
         local ok, err = pcall(function()
@@ -155,12 +155,12 @@ function init(plugin)
 
     plugin:newCommand{
       id = "cfSoloVariant",
-      title = "CharacterForge: Solo Active Variant",
+      title = "CharacterForge: Solo Active Outfit",
       group = "sprite_properties",
       onclick = function()
         local ok, err = pcall(function()
           if blueprint and not blueprint.soloActiveVariant(app.activeSprite) then
-            app.alert("Select a managed variant layer first.")
+            app.alert("Select a managed outfit layer first.")
           end
         end)
         if not ok then log("ERROR in cfSoloVariant: " .. tostring(err)); app.alert("Error: " .. tostring(err)) end
@@ -202,7 +202,7 @@ function init(plugin)
         local result = validator.validate(spr, data.cached_schema)
         if result.result == "fail" and blueprint.getSaveMode and blueprint.getSaveMode() == "block" then
           ev.stopPropagation()
-          local msg = "CharacterForge: Cannot save - structural errors:\n\n"
+          local msg = "CharacterForge: Cannot save - structure issues:\n\n"
           for _, e in ipairs(result.errors) do
             msg = msg .. "- " .. e .. "\n"
           end

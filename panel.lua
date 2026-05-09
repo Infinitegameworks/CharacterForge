@@ -72,19 +72,24 @@ local function updateLabels()
   if not dlg then return end
   dlg:modify{ id = "statusLabel", text = statusText }
   dlg:modify{ id = "detailLabel", text = detailText }
+  local multiSlot = false
   if lastSchema then
+    local slotNames = blueprint.listSlotNames(lastSchema)
+    multiSlot = #slotNames > 1
     local options = { "all" }
     local hasSelection = selectedSlotFilter == "all"
-    for _, name in ipairs(blueprint.listSlotNames(lastSchema)) do
+    for _, name in ipairs(slotNames) do
       options[#options + 1] = name
       if name == selectedSlotFilter then hasSelection = true end
     end
     if not hasSelection then selectedSlotFilter = "all" end
-    dlg:modify{ id = "slotFilter", options = options }
+    dlg:modify{ id = "slotFilter", options = multiSlot and options or { "all" } }
   else
     selectedSlotFilter = "all"
     dlg:modify{ id = "slotFilter", options = { "all" } }
   end
+  dlg:modify{ id = "btnSoloSlot", enabled = multiSlot }
+  dlg:modify{ id = "btnHideSlot", enabled = multiSlot }
   dlg:repaint()
 end
 
@@ -119,7 +124,7 @@ local function refreshPanel()
 
   if not blueprint.isAnimation(spr) then
     statusText = "Not registered"
-    detailText = "Use Register Animation or Blueprint From Current Sprite."
+    detailText = "Use Link Animation or Blueprint From Current Sprite."
     cachedLayerHash = validator.buildLayerTreeHash(spr)
     updateLabels()
     return
@@ -128,8 +133,8 @@ local function refreshPanel()
   local data = blueprint.readAnimationData(spr)
   lastData = data
   if not data or not data.cached_schema then
-    statusText = "No cached schema"
-    detailText = "Re-register this animation to a blueprint."
+    statusText = "No character definition"
+    detailText = "Re-link this animation to a character file."
     updateLabels()
     return
   end
@@ -143,7 +148,7 @@ local function refreshPanel()
 
   statusText = (data.character_name or "character") .. " / " .. (data.animation_name or "animation")
   if blueprintMissing then
-    detailText = "Blueprint missing; validating from cached schema."
+    detailText = "Character file not found; checking from saved definition."
   elseif lastValidation.result == "fail" then
     detailText = tostring(#lastValidation.errors) .. " error(s); save may be blocked."
   elseif lastValidation.result == "warn" then
@@ -207,7 +212,7 @@ local function checkSchemaFreshness(spr)
   if schemaSignature(data.cached_schema) ~= schemaSignature(schema) then
     local accept = app.alert{
       title = "CharacterForge",
-      text = "Blueprint schema has changed. Accept the new requirements for this animation?",
+      text = "Character definition has changed. Accept the new requirements for this animation?",
       buttons = { "Accept", "Dismiss" },
     }
     if accept == 1 then
@@ -276,18 +281,21 @@ end
 
 local function drawSlotChips(gc, schema)
   slotChipRects = {}
+  local slotNames = schema and blueprint.listSlotNames(schema) or {}
+  if #slotNames <= 1 then
+    previewStartY = 40
+    return
+  end
   local x = 8
   local y = 40
   x = drawChip(gc, "all", x, y, activeSlotFilter() == "all")
-  if schema then
-    for _, name in ipairs(blueprint.listSlotNames(schema)) do
-      if x + chipWidth(name) > 332 then
-        x = 8
-        y = y + 20
-      end
-      if y > 60 then break end
-      x = drawChip(gc, name, x, y, activeSlotFilter() == name)
+  for _, name in ipairs(slotNames) do
+    if x + chipWidth(name) > 332 then
+      x = 8
+      y = y + 20
     end
+    if y > 60 then break end
+    x = drawChip(gc, name, x, y, activeSlotFilter() == name)
   end
   previewStartY = y + 28
 end
@@ -386,11 +394,11 @@ local function onPaint(ev)
     drawValidationPreview(gc, lastValidation)
 
     if lastValidation.result == "fail" then
-      drawText(gc, "Red cells need repair before strict save.", 8, h - 18, utils.COLOR_FAIL)
+      drawText(gc, "Red cells have issues — fix before strict save.", 8, h - 18, utils.COLOR_FAIL)
     elseif lastValidation.result == "warn" then
       drawText(gc, "Yellow cells are incomplete or optional.", 8, h - 18, utils.COLOR_WARN)
     else
-      drawText(gc, "Green means the structure is ready.", 8, h - 18, utils.COLOR_PASS)
+      drawText(gc, "All checks pass.", 8, h - 18, utils.COLOR_PASS)
     end
   end)
   if not ok then log("CF onPaint error: " .. tostring(err)) end
@@ -491,7 +499,7 @@ local function showSettingsDialog()
       runAction(function()
         app.transaction(function()
           local absent = blueprint.toggleActiveVariantAbsent()
-          if absent == nil then app.alert("Select a managed variant layer first.") end
+          if absent == nil then app.alert("Select a managed outfit layer first.") end
         end)
       end)
     end
@@ -599,7 +607,7 @@ function panel.open()
   }
   dlg:button{
     id = "btnRegister",
-    text = "Register Animation",
+    text = "Link Animation",
     onclick = function()
       runAction(function()
         if _blueprintModule then _blueprintModule.showRegisterDialog() end
@@ -659,11 +667,11 @@ function panel.open()
   }
   dlg:button{
     id = "btnSoloVariant",
-    text = "Solo Variant",
+    text = "Solo Outfit",
     onclick = function()
       runAction(function()
         if not blueprint.soloActiveVariant(app.activeSprite) then
-          app.alert("Select a managed variant layer first.")
+          app.alert("Select a managed outfit layer first.")
         end
       end)
     end

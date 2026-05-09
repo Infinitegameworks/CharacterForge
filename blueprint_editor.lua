@@ -209,8 +209,8 @@ end
 local function schemaSummary(schema)
   return tostring(#(schema.body_parts or {})) .. " parts, " ..
          tostring(countSlots(schema)) .. " slots, " ..
-         tostring(countVariants(schema, "variant")) .. " variants, " ..
-         tostring(countVariants(schema, "state")) .. " states"
+         tostring(countVariants(schema, "variant")) .. " outfits, " ..
+         tostring(countVariants(schema, "state")) .. " effects"
 end
 
 local function applyBlueprintSchema(sprite, schema)
@@ -222,15 +222,40 @@ local function applyBlueprintSchema(sprite, schema)
   return blueprint.readBlueprintSchema(sprite)
 end
 
+local TEMPLATE_OPTIONS = {
+  "Humanoid (6 parts)",
+  "Simple Humanoid (3 parts)",
+  "Upper Body (3 parts)",
+  "Custom",
+}
+
+local TEMPLATE_PARTS = {
+  ["Humanoid (6 parts)"] = "head, torso, left_arm, right_arm, left_leg, right_leg",
+  ["Simple Humanoid (3 parts)"] = "head, torso, legs",
+  ["Upper Body (3 parts)"] = "head, torso, arms",
+  ["Custom"] = "",
+}
+
+local TEMPLATE_ANIMATIONS = "idle, walk, run"
+
 function blueprintEditor.showCreateDialog()
   local dlg = Dialog{ title = "Create Character Blueprint" }
 
+  dlg:combobox{
+    id = "template",
+    label = "Template:",
+    options = TEMPLATE_OPTIONS,
+    onchange = function()
+      local selected = dlg.data.template or "Custom"
+      dlg:modify{ id = "bodyParts", text = TEMPLATE_PARTS[selected] or "" }
+      dlg:modify{ id = "animations", text = selected ~= "Custom" and TEMPLATE_ANIMATIONS or "" }
+    end,
+  }
   dlg:entry{ id = "characterName", label = "Character:", text = "" }
-  dlg:entry{ id = "bodyParts", label = "Parts:", text = "head, torso, left_arm, right_arm, left_leg, right_leg" }
-  dlg:entry{ id = "slots", label = "Slots:", text = "default" }
-  dlg:entry{ id = "regularVariants", label = "Variants:", text = "armor" }
-  dlg:entry{ id = "stateVariants", label = "States:", text = "" }
-  dlg:entry{ id = "animations", label = "Animations:", text = "idle, walk, run" }
+  dlg:entry{ id = "bodyParts", label = "Parts:", text = TEMPLATE_PARTS[TEMPLATE_OPTIONS[1]] }
+  dlg:entry{ id = "regularVariants", label = "Outfits:", text = "armor" }
+  dlg:entry{ id = "stateVariants", label = "Effects:", text = "" }
+  dlg:entry{ id = "animations", label = "Animations:", text = TEMPLATE_ANIMATIONS }
   dlg:file{
     id = "saveDir",
     label = "Save In:",
@@ -253,7 +278,7 @@ function blueprintEditor.showCreateDialog()
   end
 
   local variants = makeVariants(dlg.data.regularVariants, dlg.data.stateVariants)
-  local bodyParts = makeBodyParts(dlg.data.bodyParts, dlg.data.slots, variants)
+  local bodyParts = makeBodyParts(dlg.data.bodyParts, "default", variants)
   if #bodyParts == 0 then
     app.alert("At least one body part is required.")
     return
@@ -297,10 +322,14 @@ function blueprintEditor.showEditDialog()
   local schema = blueprint.readBlueprintSchema(spr)
   local dlg = Dialog{ title = "Edit Blueprint" }
 
+  local hasSlotSection = countSlots(schema) > 1
+
   local function refresh()
     schema = blueprint.readBlueprintSchema(spr)
     dlg:modify{ id = "summary", text = schemaSummary(schema) }
-    dlg:modify{ id = "targetPart", options = partOptions(schema) }
+    if hasSlotSection then
+      dlg:modify{ id = "targetPart", options = partOptions(schema) }
+    end
     dlg:modify{ id = "targetSlot", options = slotOptions(schema) }
   end
 
@@ -336,45 +365,48 @@ function blueprintEditor.showEditDialog()
     end
   }
 
-  dlg:separator{ text = "Slots" }
-  dlg:combobox{ id = "targetPart", label = "Part:", options = partOptions(schema) }
-  dlg:entry{ id = "newSlots", label = "Add:", text = "" }
-  dlg:button{
-    id = "addSlots",
-    text = "Add Slot(s)",
-    onclick = function()
-      local target = dlg.data.targetPart or "all parts"
-      for _, part in ipairs(schema.body_parts or {}) do
-        if target == "all parts" or target == part.name then
-          for _, slotName in ipairs(parseList(dlg.data.newSlots, "")) do
-            if not hasNamedItem(part.slots, slotName) then
-              part.slots[#part.slots + 1] = {
-                name = slotName,
-                required = true,
-                variants = {
-                  { id = "variant_base", name = "base", type = "variant", required = true },
-                },
-              }
+  if countSlots(schema) > 1 then
+    dlg:separator{ text = "Slots" }
+    dlg:combobox{ id = "targetPart", label = "Part:", options = partOptions(schema) }
+    dlg:entry{ id = "newSlots", label = "Add:", text = "" }
+    dlg:button{
+      id = "addSlots",
+      text = "Add Slot(s)",
+      onclick = function()
+        local target = dlg.data.targetPart or "all parts"
+        for _, part in ipairs(schema.body_parts or {}) do
+          if target == "all parts" or target == part.name then
+            for _, slotName in ipairs(parseList(dlg.data.newSlots, "")) do
+              if not hasNamedItem(part.slots, slotName) then
+                part.slots[#part.slots + 1] = {
+                  name = slotName,
+                  required = true,
+                  variants = {
+                    { id = "variant_base", name = "base", type = "variant", required = true },
+                  },
+                }
+              end
             end
           end
         end
+        dlg:modify{ id = "newSlots", text = "" }
+        commit()
       end
-      dlg:modify{ id = "newSlots", text = "" }
-      commit()
-    end
-  }
+    }
+  end
 
-  dlg:separator{ text = "Variants And States" }
+  dlg:separator{ text = "Outfits And Effects" }
   dlg:combobox{ id = "targetSlot", label = "Slot:", options = slotOptions(schema) }
   dlg:entry{ id = "newVariants", label = "Add:", text = "" }
-  dlg:combobox{ id = "variantKind", label = "Kind:", options = { "variant", "state" } }
+  dlg:combobox{ id = "variantKind", label = "Kind:", options = { "outfit", "effect" } }
   dlg:check{ id = "required", label = "Required", selected = false }
   dlg:button{
     id = "addVariants",
     text = "Add",
     onclick = function()
       local target = dlg.data.targetSlot or "all slots"
-      local kind = dlg.data.variantKind or "variant"
+      local kindLabel = dlg.data.variantKind or "outfit"
+      local kind = kindLabel == "effect" and "state" or "variant"
       for _, part in ipairs(schema.body_parts or {}) do
         for _, slot in ipairs(part.slots or {}) do
           if target == "all slots" or target == slot.name then
