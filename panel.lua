@@ -68,6 +68,24 @@ local function blueprintPathForAnimation(sprite, data)
   return app.fs.joinPath(dir, data.blueprint_ref)
 end
 
+local function hasMissingAnimations()
+  local schema = nil
+  local spr = app.activeSprite
+  if spr and blueprint.isBlueprint(spr) then
+    schema = lastSchema
+  elseif spr and blueprint.isAnimation(spr) then
+    local data = lastData
+    if data and data.cached_schema then
+      schema = data.cached_schema
+    end
+  end
+  if not schema then return false end
+  for _, anim in ipairs(schema.animations or {}) do
+    if anim.status == "missing" then return true end
+  end
+  return false
+end
+
 local function updateLabels()
   if not dlg then return end
   dlg:modify{ id = "statusLabel", text = statusText }
@@ -90,6 +108,7 @@ local function updateLabels()
   end
   dlg:modify{ id = "btnSoloSlot", enabled = multiSlot }
   dlg:modify{ id = "btnHideSlot", enabled = multiSlot }
+  dlg:modify{ id = "btnStartNext", enabled = hasMissingAnimations() }
   dlg:repaint()
 end
 
@@ -249,6 +268,111 @@ local function drawStatusDot(gc, x, y, status)
   gc:fillRect(Rectangle(x, y, 8, 8))
 end
 
+local function drawProgressDot(gc, x, y, dotColor)
+  gc.color = dotColor
+  gc:fillRect(Rectangle(x, y, 8, 8))
+end
+
+local function drawBlueprintProgressView(gc, schema)
+  if not schema then return end
+  local anims = schema.animations or {}
+  if #anims == 0 then
+    drawText(gc, "No animations defined yet.", 8, previewStartY, utils.COLOR_MUTED)
+    return
+  end
+
+  local bpDir = nil
+  local spr = app.activeSprite
+  if spr and spr.filename and spr.filename ~= "" then
+    bpDir = app.fs.filePath(spr.filename)
+  end
+
+  local started = 0
+  local complete = 0
+  for _, anim in ipairs(anims) do
+    if anim.status == "valid" then
+      complete = complete + 1
+      started = started + 1
+    elseif bpDir and anim.file and anim.file ~= "" and app.fs.isFile(app.fs.joinPath(bpDir, anim.file)) then
+      started = started + 1
+    end
+  end
+
+  local y = previewStartY
+  drawText(gc, tostring(started) .. "/" .. tostring(#anims) .. " animations started, " .. tostring(complete) .. " complete", 8, y, utils.COLOR_TEXT)
+  y = y + 18
+
+  for i, anim in ipairs(anims) do
+    local label
+    local dotColor
+    if anim.status == "valid" then
+      label = "complete"
+      dotColor = utils.COLOR_PASS
+    elseif bpDir and anim.file and anim.file ~= "" and app.fs.isFile(app.fs.joinPath(bpDir, anim.file)) then
+      label = "started"
+      dotColor = utils.COLOR_WARN
+    else
+      label = "not created"
+      dotColor = utils.COLOR_UNKNOWN
+    end
+
+    local row = i - 1
+    if row % 2 == 0 then
+      fillRect(gc, 8, y - 2, 324, 14, Color{ r = 46, g = 46, b = 46, a = 255 })
+    end
+    drawProgressDot(gc, 12, y + 1, dotColor)
+    drawText(gc, (anim.name or "unnamed") .. ": " .. label, 28, y, utils.COLOR_TEXT)
+    y = y + 16
+    if y > 230 then
+      drawText(gc, "More rows hidden by panel size.", 8, 238, utils.COLOR_WARN)
+      return
+    end
+  end
+end
+
+local function drawAnimationProgressView(gc, result)
+  if not result then return end
+  local layerStatus = result.layer_status or {}
+  if #layerStatus == 0 then
+    drawText(gc, "No parts to display.", 8, previewStartY, utils.COLOR_MUTED)
+    return
+  end
+
+  local y = previewStartY
+  for i, part in ipairs(layerStatus) do
+    local label
+    local dotColor
+    if part.status == "fail" then
+      label = "missing"
+      dotColor = utils.COLOR_FAIL
+    elseif (part.base_frames or 0) > 0 then
+      label = "drawn (" .. tostring(part.base_frames) .. "f)"
+      dotColor = utils.COLOR_PASS
+    else
+      label = "empty"
+      dotColor = utils.COLOR_UNKNOWN
+    end
+
+    local row = i - 1
+    if row % 2 == 0 then
+      fillRect(gc, 8, y - 2, 324, 14, Color{ r = 46, g = 46, b = 46, a = 255 })
+    end
+    drawProgressDot(gc, 12, y + 1, dotColor)
+    drawText(gc, (part.part or "unknown") .. ": " .. label, 28, y, utils.COLOR_TEXT)
+    y = y + 16
+    if y > 230 then
+      drawText(gc, "More rows hidden by panel size.", 8, 238, utils.COLOR_WARN)
+      return
+    end
+  end
+
+  local issueCount = #(result.errors or {}) + #(result.warnings or {})
+  if issueCount > 0 then
+    local footerY = math.min(y + 4, 240)
+    drawText(gc, tostring(issueCount) .. " issue(s)", 8, footerY, utils.COLOR_WARN)
+  end
+end
+
 local function drawVariantCell(gc, x, y, variant)
   local color = utils.statusColor(variant.status)
   if variant.frames == 0 and variant.status == "pass" then color = utils.COLOR_UNKNOWN end
@@ -371,6 +495,85 @@ local function drawValidationPreview(gc, result)
   end
 end
 
+local function showDetailsDialog()
+  local detailsDlg = Dialog{ title = "CharacterForge — Details" }
+
+  detailsDlg:canvas{
+    id = "detailsCanvas",
+    width = 340,
+    height = 260,
+    onpaint = function(ev)
+      local ok2, err2 = pcall(function()
+        local gc = ev.context
+        gc.color = utils.COLOR_BG
+        gc:fillRect(Rectangle(0, 0, 340, 260))
+
+        fillRect(gc, 0, 0, 340, 34, utils.COLOR_PANEL)
+        drawText(gc, statusText, 8, 7, utils.COLOR_TEXT)
+        drawText(gc, detailText, 8, 22, blueprintMissing and utils.COLOR_WARN or utils.COLOR_MUTED)
+
+        local detailPreviewStartY = 40
+        if lastSchema then
+          local slotNames = blueprint.listSlotNames(lastSchema)
+          if #slotNames > 1 then
+            detailPreviewStartY = 68
+          end
+        end
+
+        local savedStartY = previewStartY
+        previewStartY = detailPreviewStartY
+        drawSlotChips(gc, lastSchema)
+
+        if not lastValidation then
+          if lastSchema and blueprint.isBlueprint(app.activeSprite) then
+            drawBlueprintPreview(gc, lastSchema)
+          end
+          previewStartY = savedStartY
+          return
+        end
+
+        drawValidationPreview(gc, lastValidation)
+
+        if lastValidation.result == "fail" then
+          drawText(gc, "Red cells have issues — fix before strict save.", 8, 242, utils.COLOR_FAIL)
+        elseif lastValidation.result == "warn" then
+          drawText(gc, "Yellow cells are incomplete or optional.", 8, 242, utils.COLOR_WARN)
+        else
+          drawText(gc, "All checks pass.", 8, 242, utils.COLOR_PASS)
+        end
+        previewStartY = savedStartY
+      end)
+      if not ok2 then log("CF details onPaint error: " .. tostring(err2)) end
+    end,
+    onmousedown = function(ev)
+      local ok2, err2 = pcall(function()
+        local x = ev.x or 0
+        local y = ev.y or 0
+        for _, rect in ipairs(slotChipRects or {}) do
+          if x >= rect.x and x <= rect.x + rect.w and y >= rect.y and y <= rect.y + rect.h then
+            selectedSlotFilter = rect.name
+            local schema = activeSchema()
+            if schema then
+              if rect.name == "all" then
+                blueprint.setSlotVisibility(app.activeSprite, schema, "all", "all")
+              else
+                blueprint.setSlotVisibility(app.activeSprite, schema, rect.name, "solo")
+              end
+            end
+            detailsDlg:repaint()
+            if dlg then dlg:repaint() end
+            return
+          end
+        end
+      end)
+      if not ok2 then log("CF details click error: " .. tostring(err2)) end
+    end,
+  }
+
+  detailsDlg:button{ id = "closeDetails", text = "Close", onclick = function() detailsDlg:close() end }
+  detailsDlg:show{ wait = false }
+end
+
 local function onPaint(ev)
   local ok, err = pcall(function()
     local gc = ev.context
@@ -382,24 +585,17 @@ local function onPaint(ev)
     fillRect(gc, 0, 0, w, 34, utils.COLOR_PANEL)
     drawText(gc, statusText, 8, 7, utils.COLOR_TEXT)
     drawText(gc, detailText, 8, 22, blueprintMissing and utils.COLOR_WARN or utils.COLOR_MUTED)
-    drawSlotChips(gc, lastSchema)
+
+    previewStartY = 40
 
     if not lastValidation then
       if lastSchema and blueprint.isBlueprint(app.activeSprite) then
-        drawBlueprintPreview(gc, lastSchema)
+        drawBlueprintProgressView(gc, lastSchema)
       end
       return
     end
 
-    drawValidationPreview(gc, lastValidation)
-
-    if lastValidation.result == "fail" then
-      drawText(gc, "Red cells have issues — fix before strict save.", 8, h - 18, utils.COLOR_FAIL)
-    elseif lastValidation.result == "warn" then
-      drawText(gc, "Yellow cells are incomplete or optional.", 8, h - 18, utils.COLOR_WARN)
-    else
-      drawText(gc, "All checks pass.", 8, h - 18, utils.COLOR_PASS)
-    end
+    drawAnimationProgressView(gc, lastValidation)
   end)
   if not ok then log("CF onPaint error: " .. tostring(err)) end
 end
@@ -565,6 +761,13 @@ function panel.open()
     onpaint = onPaint,
     onmousedown = onCanvasMouseDown,
   }
+  dlg:button{
+    id = "btnDetails",
+    text = "Details",
+    onclick = function()
+      showDetailsDialog()
+    end
+  }
   dlg:label{ id = "statusLabel", text = "Loading..." }
   dlg:label{ id = "detailLabel", text = "" }
 
@@ -602,6 +805,34 @@ function panel.open()
     onclick = function()
       runAction(function()
         if _blueprintModule then _blueprintModule.showNewAnimationDialog() end
+      end)
+    end
+  }
+  dlg:button{
+    id = "btnStartNext",
+    text = "Start Next",
+    onclick = function()
+      runAction(function()
+        local spr = app.activeSprite
+        if not spr then
+          app.alert("No sprite open.")
+          return
+        end
+        local bpPath = nil
+        if blueprint.isBlueprint(spr) then
+          bpPath = spr.filename
+        elseif blueprint.isAnimation(spr) then
+          local data = blueprint.readAnimationData(spr)
+          bpPath = blueprintPathForAnimation(spr, data)
+        end
+        if not bpPath or bpPath == "" then
+          app.alert("No character file found for this sprite.")
+          return
+        end
+        local createdPath = blueprint.createNextAnimation(bpPath)
+        if not createdPath then
+          app.alert("All animations have been started.")
+        end
       end)
     end
   }

@@ -1059,6 +1059,96 @@ function blueprint.showCreateFromCurrentDialog()
   app.alert("Blueprint created from current sprite: " .. charName)
 end
 
+function blueprint.createNextAnimation(bpPath)
+  if not bpPath or bpPath == "" then return nil end
+  if not app.fs.isFile(bpPath) then return nil end
+
+  local bpSprite, shouldCloseBlueprint = openSpriteForPath(bpPath)
+  if not bpSprite then return nil end
+
+  local schema = blueprint.readBlueprintSchema(bpSprite)
+  if not schema then
+    if shouldCloseBlueprint then bpSprite:close() end
+    return nil
+  end
+
+  local nextAnim = nil
+  for _, anim in ipairs(schema.animations or {}) do
+    if anim.status == "missing" then
+      nextAnim = anim
+      break
+    end
+  end
+
+  if not nextAnim then
+    if shouldCloseBlueprint then bpSprite:close() end
+    return nil
+  end
+
+  local animName = nextAnim.name or ""
+  if animName == "" then
+    if shouldCloseBlueprint then bpSprite:close() end
+    return nil
+  end
+
+  local charName = schema.character_name or "character"
+  local fileName = charName .. "_" .. animName .. ".ase"
+  local bpDir = app.fs.filePath(bpPath)
+  local savePath = app.fs.joinPath(bpDir, fileName)
+
+  local newSprite = Sprite(bpSprite.width, bpSprite.height, bpSprite.colorMode)
+  local filtered = blueprint.normalizeSchema(schema)
+  for _, part in ipairs(filtered.body_parts or {}) do
+    for _, slot in ipairs(part.slots or {}) do
+      local variants = {}
+      for _, variant in ipairs(slot.variants or {}) do
+        if shouldIncludeVariant(variant, animName) then
+          variants[#variants + 1] = variant
+        end
+      end
+      slot.variants = variants
+    end
+  end
+  blueprint.ensureLayerStructure(newSprite, filtered)
+
+  if newSprite.layers[1] and newSprite.layers[1].name == "Layer 1" then
+    newSprite.layers[1].name = "Reference"
+  end
+
+  blueprint.writeAnimationData(newSprite, {
+    blueprint_ref = app.fs.fileName(bpPath),
+    character_name = charName,
+    animation_name = animName,
+    cached_schema = {
+      body_parts = schema.body_parts,
+      variants = schema.variants,
+      animations = schema.animations,
+      cache_timestamp = os.time(),
+    },
+    last_validated = 0,
+    validation_result = "unknown",
+    layer_status = {},
+  })
+
+  newSprite:saveAs(savePath)
+
+  local animations = schema.animations or {}
+  for i, anim in ipairs(animations) do
+    if anim.name == animName then
+      animations[i].file = fileName
+      animations[i].status = "valid"
+      break
+    end
+  end
+  schema.animations = animations
+  blueprint.writeBlueprintSchema(bpSprite, schema)
+  bpSprite:save()
+  if shouldCloseBlueprint then bpSprite:close() end
+  blueprint.rememberBlueprint(bpPath)
+
+  return savePath
+end
+
 local function collectFrameSet(layer, frames)
   if not layer then return frames end
   frames = frames or {}
