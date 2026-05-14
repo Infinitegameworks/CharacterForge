@@ -221,40 +221,6 @@ local function connectSpriteEvents(sprite)
 end
 
 local function checkSchemaFreshness(spr)
-  if not spr or not spr.filename or spr.filename == "" then return end
-  if spr.filename == lastCheckedFilename then return end
-  lastCheckedFilename = spr.filename
-
-  if not blueprint.isAnimation(spr) then return end
-  local data = blueprint.readAnimationData(spr)
-  local bpPath = blueprintPathForAnimation(spr, data)
-  if not bpPath or not app.fs.isFile(bpPath) then return end
-
-  log("checkSchemaFreshness opening blueprint: " .. bpPath)
-  isRefreshingCache = true
-  local bpSprite = app.open(bpPath)
-  if not bpSprite then
-    isRefreshingCache = false
-    return
-  end
-
-  local schema = blueprint.readBlueprintSchema(bpSprite)
-  app.command.CloseFile()
-  isRefreshingCache = false
-  log("checkSchemaFreshness done, activeSprite=" .. tostring(app.activeSprite and app.activeSprite.filename or "nil"))
-
-  if not schema then return end
-
-  if schemaSignature(data.cached_schema) ~= schemaSignature(schema) then
-    local accept = app.alert{
-      title = "CharacterForge",
-      text = "Character definition has changed. Accept the new requirements for this animation?",
-      buttons = { "Accept", "Dismiss" },
-    }
-    if accept == 1 then
-      blueprint.cacheSchemaInAnimation(spr, schema)
-    end
-  end
 end
 
 local function onSiteChange()
