@@ -842,7 +842,30 @@ function blueprint.showNewAnimationDialog()
     end
   end
 
-  local newSprite = Sprite(bpSprite.width, bpSprite.height, bpSprite.colorMode)
+  local bpWidth = bpSprite.width
+  local bpHeight = bpSprite.height
+  local bpColorMode = bpSprite.colorMode
+
+  local animations = schema.animations or {}
+  local found = false
+  for i, anim in ipairs(animations) do
+    if anim.name == animName then
+      animations[i].file = fileName
+      animations[i].status = "valid"
+      found = true
+      break
+    end
+  end
+  if not found then
+    animations[#animations + 1] = { name = animName, file = fileName, status = "valid" }
+  end
+  schema.animations = animations
+  blueprint.writeBlueprintSchema(bpSprite, schema)
+  bpSprite:save()
+  if shouldCloseBlueprint then bpSprite:close() end
+  blueprint.rememberBlueprint(bpPath)
+
+  local newSprite = Sprite(bpWidth, bpHeight, bpColorMode)
   local filtered = blueprint.normalizeSchema(schema)
   for _, part in ipairs(filtered.body_parts or {}) do
     for _, slot in ipairs(part.slots or {}) do
@@ -877,25 +900,6 @@ function blueprint.showNewAnimationDialog()
   })
 
   newSprite:saveAs(savePath)
-
-  local animations = schema.animations or {}
-  local found = false
-  for i, anim in ipairs(animations) do
-    if anim.name == animName then
-      animations[i].file = fileName
-      animations[i].status = "valid"
-      found = true
-      break
-    end
-  end
-  if not found then
-    animations[#animations + 1] = { name = animName, file = fileName, status = "valid" }
-  end
-  schema.animations = animations
-  blueprint.writeBlueprintSchema(bpSprite, schema)
-  bpSprite:save()
-  if shouldCloseBlueprint then bpSprite:close() end
-  blueprint.rememberBlueprint(bpPath)
 
   app.alert("Animation created: " .. fileName)
 end
@@ -1116,9 +1120,28 @@ function blueprint.createNextAnimation(bpPath, targetAnimName)
   local savePath = app.fs.joinPath(bpDir, fileName)
   log("  creating animation: " .. animName .. " charName=" .. charName .. " savePath=" .. savePath)
 
-  local newSprite = Sprite(bpSprite.width, bpSprite.height, bpSprite.colorMode)
+  local bpWidth = bpSprite.width
+  local bpHeight = bpSprite.height
+  local bpColorMode = bpSprite.colorMode
+
+  local animations = schema.animations or {}
+  for i, anim in ipairs(animations) do
+    if anim.name == animName then
+      animations[i].file = fileName
+      animations[i].status = "valid"
+      break
+    end
+  end
+  schema.animations = animations
+  blueprint.writeBlueprintSchema(bpSprite, schema)
+  bpSprite:save()
+  log("  blueprint saved before Sprite()")
+
+  if shouldCloseBlueprint then bpSprite:close() end
+  blueprint.rememberBlueprint(bpPath)
+
+  local newSprite = Sprite(bpWidth, bpHeight, bpColorMode)
   log("  Sprite() created, activeSprite=" .. tostring(app.activeSprite and app.activeSprite.filename or "nil"))
-  log("  newSprite == activeSprite? " .. tostring(newSprite == app.activeSprite))
 
   local filtered = blueprint.normalizeSchema(schema)
   for _, part in ipairs(filtered.body_parts or {}) do
@@ -1156,24 +1179,6 @@ function blueprint.createNextAnimation(bpPath, targetAnimName)
 
   newSprite:saveAs(savePath)
   log("  saveAs done, newSprite.filename=" .. tostring(newSprite.filename))
-  log("  activeSprite after saveAs=" .. tostring(app.activeSprite and app.activeSprite.filename or "nil"))
-
-  local animations = schema.animations or {}
-  for i, anim in ipairs(animations) do
-    if anim.name == animName then
-      animations[i].file = fileName
-      animations[i].status = "valid"
-      break
-    end
-  end
-  schema.animations = animations
-  blueprint.writeBlueprintSchema(bpSprite, schema)
-  bpSprite:save()
-  log("  bpSprite:save() done, activeSprite=" .. tostring(app.activeSprite and app.activeSprite.filename or "nil"))
-
-  if shouldCloseBlueprint then bpSprite:close() end
-  blueprint.rememberBlueprint(bpPath)
-
   log("  createNextAnimation END activeSprite=" .. tostring(app.activeSprite and app.activeSprite.filename or "nil"))
   return savePath
 end
