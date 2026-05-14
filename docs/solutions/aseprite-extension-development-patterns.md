@@ -196,3 +196,8 @@ The create/edit dialogs use comma-separated text entry instead of add/remove but
 12. **Don't delete Layer 1** — rename to "Reference" instead. Deleting all image layers causes the palette panel to go black.
 13. **openSpriteForPath()** — check if the sprite is already the active sprite before calling `app.open()`. Avoids tab flashing and unnecessary file I/O.
 14. **Wrap schema comparison in signatures** — `schemaSignature()` produces a deterministic string for comparison. Don't compare raw tables.
+15. **sprite:save() and sprite:close() don't exist on references** — Use `app.command.SaveFile()` / `app.command.CloseFile()` instead. Created `safeCloseSprite()` helper. See `aseprite-sprite-reference-and-file-operation-pitfalls.md` for details.
+16. **Sprite() invalidates old sprite references** — Capture width/height/colorMode/palette into locals and finish all old-sprite work (save, close) BEFORE calling `Sprite()`.
+17. **app.open() + CloseFile() hijacks active tab** — After CloseFile(), Aseprite picks an arbitrary next tab, not the previously-active one. No tab-restore API exists. Avoid the open-read-close pattern entirely.
+18. **sitechange guard must cover the entire operation** — Keep `isRefreshingCache = true` through the full open-read-close cycle, not just around `app.open()`. CloseFile() and Sprite() also trigger sitechange synchronously.
+19. **Never open files for background reading** — The "open, check schema freshness, close" pattern causes tab flashing, wrong-tab navigation, and re-entrancy. Cache cross-file data at write time instead.
