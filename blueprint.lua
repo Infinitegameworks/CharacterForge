@@ -861,7 +861,7 @@ function blueprint.showNewAnimationDialog()
   end
   schema.animations = animations
   blueprint.writeBlueprintSchema(bpSprite, schema)
-  bpSprite:save()
+  app.command.SaveFile()
   if shouldCloseBlueprint then bpSprite:close() end
   blueprint.rememberBlueprint(bpPath)
 
@@ -1020,7 +1020,7 @@ function blueprint.showRegisterDialog()
   end
   schema.animations = animations
   blueprint.writeBlueprintSchema(bpSprite, schema)
-  bpSprite:save()
+  app.command.SaveFile()
   if shouldCloseBlueprint then bpSprite:close() end
   blueprint.rememberBlueprint(bpPath)
 
@@ -1134,7 +1134,7 @@ function blueprint.createNextAnimation(bpPath, targetAnimName)
   end
   schema.animations = animations
   blueprint.writeBlueprintSchema(bpSprite, schema)
-  bpSprite:save()
+  app.command.SaveFile()
   log("  blueprint saved before Sprite()")
 
   if shouldCloseBlueprint then bpSprite:close() end
