@@ -25,7 +25,6 @@ local selectedSlotFilter = "all"
 local slotChipRects = {}
 local animRowRects = {}
 local variantRowRects = {}
-local isSyncing = false
 local previewStartY = 68
 
 local spriteChangeHandler = nil
@@ -244,9 +243,22 @@ local function checkSchemaFreshness(spr)
 end
 
 local function onSiteChange()
-  if isRefreshingCache or isSyncing then return end
+  if isRefreshingCache then return end
   local ok, err = pcall(function()
     local spr = app.activeSprite
+    if currentSprite and spr then
+      pcall(function()
+        if blueprint.isAnimation(currentSprite) and blueprint.isBlueprint(spr) then
+          local data = blueprint.readAnimationData(currentSprite)
+          if data and data.blueprint_ref and data.blueprint_ref ~= "" then
+            local bpName = app.fs.fileName(spr.filename or "")
+            if bpName == data.blueprint_ref then
+              blueprint.syncCompletionToBlueprint(currentSprite, spr)
+            end
+          end
+        end
+      end)
+    end
     if spr ~= currentSprite then
       connectSpriteEvents(spr)
       if spr then checkSchemaFreshness(spr) end
@@ -745,11 +757,6 @@ local function onVariantRowClick(rect)
     local props = variantLayer.properties(blueprint.PK)
     props.marked_done = not props.marked_done
   end)
-
-  local allDone = blueprint.checkAllVariantsDone(spr)
-  isSyncing = true
-  blueprint.syncAnimationStatus(spr, allDone and "valid" or "started")
-  isSyncing = false
 
   refreshPanel()
 end
