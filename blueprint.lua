@@ -8,6 +8,11 @@ blueprint.SCHEMA_VERSION = SCHEMA_VERSION
 
 local preferences = nil
 
+local function log(msg)
+  local f = io.open(app.fs.joinPath(app.fs.tempPath, "characterforge.log"), "a")
+  if f then f:write(os.date("%H:%M:%S") .. " [blueprint] " .. msg .. "\n"); f:flush(); f:close() end
+end
+
 local function trim(value)
   return tostring(value or ""):match("^%s*(.-)%s*$")
 end
@@ -1060,10 +1065,14 @@ function blueprint.showCreateFromCurrentDialog()
 end
 
 function blueprint.createNextAnimation(bpPath, targetAnimName)
+  log("createNextAnimation START bpPath=" .. tostring(bpPath) .. " target=" .. tostring(targetAnimName))
+  log("  activeSprite=" .. tostring(app.activeSprite and app.activeSprite.filename or "nil"))
   if not bpPath or bpPath == "" then return nil end
   if not app.fs.isFile(bpPath) then return nil end
 
   local bpSprite, shouldCloseBlueprint = openSpriteForPath(bpPath)
+  log("  openSpriteForPath shouldClose=" .. tostring(shouldCloseBlueprint))
+  log("  activeSprite after open=" .. tostring(app.activeSprite and app.activeSprite.filename or "nil"))
   if not bpSprite then return nil end
 
   local schema = blueprint.readBlueprintSchema(bpSprite)
@@ -1090,6 +1099,7 @@ function blueprint.createNextAnimation(bpPath, targetAnimName)
   end
 
   if not nextAnim then
+    log("  no matching animation found")
     if shouldCloseBlueprint then bpSprite:close() end
     return nil
   end
@@ -1104,8 +1114,12 @@ function blueprint.createNextAnimation(bpPath, targetAnimName)
   local fileName = charName .. "_" .. animName .. ".ase"
   local bpDir = app.fs.filePath(bpPath)
   local savePath = app.fs.joinPath(bpDir, fileName)
+  log("  creating animation: " .. animName .. " charName=" .. charName .. " savePath=" .. savePath)
 
   local newSprite = Sprite(bpSprite.width, bpSprite.height, bpSprite.colorMode)
+  log("  Sprite() created, activeSprite=" .. tostring(app.activeSprite and app.activeSprite.filename or "nil"))
+  log("  newSprite == activeSprite? " .. tostring(newSprite == app.activeSprite))
+
   local filtered = blueprint.normalizeSchema(schema)
   for _, part in ipairs(filtered.body_parts or {}) do
     for _, slot in ipairs(part.slots or {}) do
@@ -1138,8 +1152,11 @@ function blueprint.createNextAnimation(bpPath, targetAnimName)
     validation_result = "unknown",
     layer_status = {},
   })
+  log("  writeAnimationData done, isAnimation=" .. tostring(blueprint.isAnimation(newSprite)))
 
   newSprite:saveAs(savePath)
+  log("  saveAs done, newSprite.filename=" .. tostring(newSprite.filename))
+  log("  activeSprite after saveAs=" .. tostring(app.activeSprite and app.activeSprite.filename or "nil"))
 
   local animations = schema.animations or {}
   for i, anim in ipairs(animations) do
@@ -1152,9 +1169,12 @@ function blueprint.createNextAnimation(bpPath, targetAnimName)
   schema.animations = animations
   blueprint.writeBlueprintSchema(bpSprite, schema)
   bpSprite:save()
+  log("  bpSprite:save() done, activeSprite=" .. tostring(app.activeSprite and app.activeSprite.filename or "nil"))
+
   if shouldCloseBlueprint then bpSprite:close() end
   blueprint.rememberBlueprint(bpPath)
 
+  log("  createNextAnimation END activeSprite=" .. tostring(app.activeSprite and app.activeSprite.filename or "nil"))
   return savePath
 end
 

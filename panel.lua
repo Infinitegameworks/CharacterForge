@@ -124,6 +124,13 @@ local function refreshPanel()
   lastSchema = nil
   blueprintMissing = false
 
+  log("refreshPanel activeSprite=" .. tostring(spr and spr.filename or "nil"))
+  if spr then
+    log("  isBlueprint=" .. tostring(blueprint.isBlueprint(spr)) .. " isAnimation=" .. tostring(blueprint.isAnimation(spr)))
+    local props = spr.properties(blueprint.PK)
+    log("  props.type=" .. tostring(props and props.type or "nil") .. " props.character_name=" .. tostring(props and props.character_name or "nil") .. " props.animation_name=" .. tostring(props and props.animation_name or "nil"))
+  end
+
   if not spr then
     statusText = "No sprite open"
     detailText = "Open a sprite or create a blueprint."
@@ -139,6 +146,7 @@ local function refreshPanel()
     statusText = (schema.character_name or "Blueprint") .. " blueprint"
     detailText = tostring(partCount) .. " part(s), " .. tostring(animCount) .. " expected animation(s)"
     cachedLayerHash = validator.buildLayerTreeHash(spr)
+    log("  -> blueprint view: " .. statusText)
     updateLabels()
     return
   end
@@ -147,6 +155,7 @@ local function refreshPanel()
     statusText = "Not registered"
     detailText = "Use Link Animation or Blueprint From Current Sprite."
     cachedLayerHash = validator.buildLayerTreeHash(spr)
+    log("  -> not registered")
     updateLabels()
     return
   end
@@ -243,7 +252,8 @@ local function checkSchemaFreshness(spr)
 end
 
 local function onSiteChange()
-  if isRefreshingCache then return end
+  log("onSiteChange isRefreshingCache=" .. tostring(isRefreshingCache) .. " activeSprite=" .. tostring(app.activeSprite and app.activeSprite.filename or "nil"))
+  if isRefreshingCache then log("  BLOCKED"); return end
   local ok, err = pcall(function()
     local spr = app.activeSprite
     if currentSprite and spr then
@@ -714,12 +724,15 @@ end
 
 local function onAnimRowClick(rect)
   local spr = app.activeSprite
+  log("onAnimRowClick name=" .. tostring(rect.name) .. " file=" .. tostring(rect.file) .. " fileExists=" .. tostring(rect.fileExists))
+  log("  activeSprite=" .. tostring(spr and spr.filename or "nil"))
   if not spr or not spr.filename or spr.filename == "" then return end
   local dir = app.fs.filePath(spr.filename)
 
   if rect.fileExists and rect.file ~= "" then
     local path = app.fs.joinPath(dir, rect.file)
     if app.fs.isFile(path) then
+      log("  opening existing: " .. path)
       app.open(path)
       refreshPanel()
       return
@@ -732,12 +745,19 @@ local function onAnimRowClick(rect)
     buttons = { "Create", "Cancel" },
   }
   if confirm == 1 then
+    log("  creating animation, setting isRefreshingCache=true")
     isRefreshingCache = true
     local created = blueprint.createNextAnimation(spr.filename, rect.name)
     isRefreshingCache = false
+    log("  createNextAnimation returned: " .. tostring(created))
+    log("  activeSprite after create=" .. tostring(app.activeSprite and app.activeSprite.filename or "nil"))
     if created then
+      log("  calling app.open(" .. tostring(created) .. ")")
       app.open(created)
+      log("  activeSprite after open=" .. tostring(app.activeSprite and app.activeSprite.filename or "nil"))
+      log("  isAnimation=" .. tostring(blueprint.isAnimation(app.activeSprite)))
       connectSpriteEvents(app.activeSprite)
+      log("  calling refreshPanel")
       refreshPanel()
     else
       app.alert("Could not create animation.")
