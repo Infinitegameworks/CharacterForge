@@ -736,6 +736,7 @@ local function onAnimRowClick(rect)
     local created = blueprint.createNextAnimation(spr.filename, rect.name)
     isRefreshingCache = false
     if created then
+      app.open(created)
       connectSpriteEvents(app.activeSprite)
       refreshPanel()
     else
@@ -1009,6 +1010,7 @@ function panel.open()
         local createdPath = blueprint.createNextAnimation(bpPath)
         isRefreshingCache = false
         if createdPath then
+          app.open(createdPath)
           connectSpriteEvents(app.activeSprite)
         else
           app.alert("All animations have been started.")
