@@ -72,23 +72,6 @@ local function blueprintPathForAnimation(sprite, data)
   return app.fs.joinPath(dir, data.blueprint_ref)
 end
 
-local function hasMissingAnimations()
-  local schema = nil
-  local spr = app.activeSprite
-  if spr and blueprint.isBlueprint(spr) then
-    schema = lastSchema
-  elseif spr and blueprint.isAnimation(spr) then
-    local data = lastData
-    if data and data.cached_schema then
-      schema = data.cached_schema
-    end
-  end
-  if not schema then return false end
-  for _, anim in ipairs(schema.animations or {}) do
-    if anim.status == "missing" then return true end
-  end
-  return false
-end
 
 local function updateLabels()
   if not dlg then return end
@@ -112,7 +95,6 @@ local function updateLabels()
   end
   dlg:modify{ id = "btnSoloSlot", enabled = multiSlot }
   dlg:modify{ id = "btnHideSlot", enabled = multiSlot }
-  dlg:modify{ id = "btnStartNext", enabled = hasMissingAnimations() }
   dlg:repaint()
 end
 
@@ -974,38 +956,6 @@ function panel.open()
     onclick = function()
       runAction(function()
         if _blueprintModule then _blueprintModule.showNewAnimationDialog() end
-      end)
-    end
-  }
-  dlg:button{
-    id = "btnStartNext",
-    text = "Start Next",
-    onclick = function()
-      runAction(function()
-        local spr = app.activeSprite
-        if not spr then
-          app.alert("No sprite open.")
-          return
-        end
-        local bpPath = nil
-        if blueprint.isBlueprint(spr) then
-          bpPath = spr.filename
-        elseif blueprint.isAnimation(spr) then
-          local data = blueprint.readAnimationData(spr)
-          bpPath = blueprintPathForAnimation(spr, data)
-        end
-        if not bpPath or bpPath == "" then
-          app.alert("No character file found for this sprite.")
-          return
-        end
-        isRefreshingCache = true
-        local createdPath = blueprint.createNextAnimation(bpPath)
-        isRefreshingCache = false
-        if createdPath then
-          connectSpriteEvents(app.activeSprite)
-        else
-          app.alert("All animations have been started.")
-        end
       end)
     end
   }
