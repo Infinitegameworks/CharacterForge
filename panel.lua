@@ -673,10 +673,21 @@ local function onPaint(ev)
       if lastSchema and blueprint.isBlueprint(app.activeSprite) then
         drawBlueprintProgressView(gc, lastSchema)
       end
-      return
+    else
+      drawAnimationProgressView(gc, lastValidation)
     end
 
-    drawAnimationProgressView(gc, lastValidation)
+    local visibleHeight = 256 - previewStartY
+    if contentHeight > visibleHeight then
+      local trackX = w - 6
+      local trackY = previewStartY
+      local trackH = visibleHeight
+      local thumbH = math.max(16, math.floor(trackH * visibleHeight / contentHeight))
+      local maxScroll = contentHeight - visibleHeight
+      local thumbY = trackY + math.floor((trackH - thumbH) * scrollOffset / maxScroll)
+      fillRect(gc, trackX, trackY, 4, trackH, Color{ r = 50, g = 50, b = 50, a = 255 })
+      fillRect(gc, trackX, thumbY, 4, thumbH, Color{ r = 100, g = 100, b = 100, a = 255 })
+    end
   end)
   if not ok then log("CF onPaint error: " .. tostring(err)) end
 end
