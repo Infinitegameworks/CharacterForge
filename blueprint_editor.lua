@@ -107,6 +107,16 @@ local function hasNamedItem(list, name)
   return false
 end
 
+local function removeNamedItem(list, name)
+  for i = #list, 1, -1 do
+    if list[i].name == name then
+      table.remove(list, i)
+      return true
+    end
+  end
+  return false
+end
+
 local function cloneVariant(variant)
   return {
     id = variant.id,
@@ -162,6 +172,38 @@ local function partOptions(schema)
     options[#options + 1] = part.name
   end
   return options
+end
+
+local function partNames(schema)
+  local options = {}
+  for _, part in ipairs(schema.body_parts or {}) do
+    options[#options + 1] = part.name
+  end
+  return options
+end
+
+local function variantNames(schema)
+  local names = {}
+  local seen = {}
+  for _, part in ipairs(schema.body_parts or {}) do
+    for _, slot in ipairs(part.slots or {}) do
+      for _, variant in ipairs(slot.variants or {}) do
+        if variant.name ~= "base" and not seen[variant.name] then
+          names[#names + 1] = variant.name
+          seen[variant.name] = true
+        end
+      end
+    end
+  end
+  return names
+end
+
+local function animationNames(schema)
+  local names = {}
+  for _, anim in ipairs(schema.animations or {}) do
+    names[#names + 1] = anim.name
+  end
+  return names
 end
 
 local function slotOptions(schema)
@@ -327,10 +369,14 @@ function blueprintEditor.showEditDialog()
   local function refresh()
     schema = blueprint.readBlueprintSchema(spr)
     dlg:modify{ id = "summary", text = schemaSummary(schema) }
+    dlg:modify{ id = "removePart", options = partNames(schema) }
     if hasSlotSection then
       dlg:modify{ id = "targetPart", options = partOptions(schema) }
+      dlg:modify{ id = "removeSlot", options = slotOptions(schema) }
     end
     dlg:modify{ id = "targetSlot", options = slotOptions(schema) }
+    dlg:modify{ id = "removeVariant", options = variantNames(schema) }
+    dlg:modify{ id = "removeAnimation", options = animationNames(schema) }
   end
 
   local function commit()
@@ -364,6 +410,24 @@ function blueprintEditor.showEditDialog()
       commit()
     end
   }
+  dlg:combobox{ id = "removePart", label = "Remove:", options = partNames(schema) }
+  dlg:button{
+    id = "removeParts",
+    text = "Remove Part",
+    onclick = function()
+      local name = dlg.data.removePart
+      if not name or name == "" then return end
+      local confirm = app.alert{
+        title = "Remove Part",
+        text = "Remove '" .. name .. "' from all slots?",
+        buttons = { "Remove", "Cancel" },
+      }
+      if confirm == 1 then
+        removeNamedItem(schema.body_parts, name)
+        commit()
+      end
+    end
+  }
 
   if countSlots(schema) > 1 then
     dlg:separator{ text = "Slots" }
@@ -391,6 +455,29 @@ function blueprintEditor.showEditDialog()
         end
         dlg:modify{ id = "newSlots", text = "" }
         commit()
+      end
+    }
+    dlg:combobox{ id = "removeSlot", label = "Remove:", options = slotOptions(schema) }
+    dlg:button{
+      id = "removeSlots",
+      text = "Remove Slot",
+      onclick = function()
+        local name = dlg.data.removeSlot
+        if not name or name == "" or name == "all slots" then return end
+        local target = dlg.data.targetPart or "all parts"
+        local confirm = app.alert{
+          title = "Remove Slot",
+          text = "Remove slot '" .. name .. "' from " .. target .. "?",
+          buttons = { "Remove", "Cancel" },
+        }
+        if confirm == 1 then
+          for _, part in ipairs(schema.body_parts or {}) do
+            if target == "all parts" or target == part.name then
+              removeNamedItem(part.slots, name)
+            end
+          end
+          commit()
+        end
       end
     }
   end
@@ -426,6 +513,31 @@ function blueprintEditor.showEditDialog()
       commit()
     end
   }
+  dlg:combobox{ id = "removeVariant", label = "Remove:", options = variantNames(schema) }
+  dlg:button{
+    id = "removeVariants",
+    text = "Remove Outfit/Effect",
+    onclick = function()
+      local name = dlg.data.removeVariant
+      if not name or name == "" then return end
+      local target = dlg.data.targetSlot or "all slots"
+      local confirm = app.alert{
+        title = "Remove Outfit/Effect",
+        text = "Remove '" .. name .. "' from " .. target .. "?",
+        buttons = { "Remove", "Cancel" },
+      }
+      if confirm == 1 then
+        for _, part in ipairs(schema.body_parts or {}) do
+          for _, slot in ipairs(part.slots or {}) do
+            if target == "all slots" or target == slot.name then
+              removeNamedItem(slot.variants, name)
+            end
+          end
+        end
+        commit()
+      end
+    end
+  }
 
   dlg:separator{ text = "Animations" }
   dlg:entry{ id = "newAnimations", label = "Add:", text = "" }
@@ -444,6 +556,24 @@ function blueprintEditor.showEditDialog()
       end
       dlg:modify{ id = "newAnimations", text = "" }
       commit()
+    end
+  }
+  dlg:combobox{ id = "removeAnimation", label = "Remove:", options = animationNames(schema) }
+  dlg:button{
+    id = "removeAnimations",
+    text = "Remove Animation",
+    onclick = function()
+      local name = dlg.data.removeAnimation
+      if not name or name == "" then return end
+      local confirm = app.alert{
+        title = "Remove Animation",
+        text = "Remove animation '" .. name .. "'?",
+        buttons = { "Remove", "Cancel" },
+      }
+      if confirm == 1 then
+        removeNamedItem(schema.animations, name)
+        commit()
+      end
     end
   }
 
