@@ -845,6 +845,7 @@ function blueprint.showNewAnimationDialog()
   local bpWidth = bpSprite.width
   local bpHeight = bpSprite.height
   local bpColorMode = bpSprite.colorMode
+  local bpPalette = Palette(bpSprite.palettes[1])
 
   local animations = schema.animations or {}
   local found = false
@@ -866,6 +867,7 @@ function blueprint.showNewAnimationDialog()
   blueprint.rememberBlueprint(bpPath)
 
   local newSprite = Sprite(bpWidth, bpHeight, bpColorMode)
+  newSprite:setPalette(bpPalette)
   local filtered = blueprint.normalizeSchema(schema)
   for _, part in ipairs(filtered.body_parts or {}) do
     for _, slot in ipairs(part.slots or {}) do
@@ -1123,6 +1125,7 @@ function blueprint.createNextAnimation(bpPath, targetAnimName)
   local bpWidth = bpSprite.width
   local bpHeight = bpSprite.height
   local bpColorMode = bpSprite.colorMode
+  local bpPalette = Palette(bpSprite.palettes[1])
 
   local animations = schema.animations or {}
   for i, anim in ipairs(animations) do
@@ -1141,6 +1144,7 @@ function blueprint.createNextAnimation(bpPath, targetAnimName)
   blueprint.rememberBlueprint(bpPath)
 
   local newSprite = Sprite(bpWidth, bpHeight, bpColorMode)
+  newSprite:setPalette(bpPalette)
   log("  Sprite() created, activeSprite=" .. tostring(app.activeSprite and app.activeSprite.filename or "nil"))
 
   local filtered = blueprint.normalizeSchema(schema)

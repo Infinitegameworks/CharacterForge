@@ -752,12 +752,8 @@ local function onAnimRowClick(rect)
     log("  createNextAnimation returned: " .. tostring(created))
     log("  activeSprite after create=" .. tostring(app.activeSprite and app.activeSprite.filename or "nil"))
     if created then
-      log("  calling app.open(" .. tostring(created) .. ")")
-      app.open(created)
-      log("  activeSprite after open=" .. tostring(app.activeSprite and app.activeSprite.filename or "nil"))
-      log("  isAnimation=" .. tostring(blueprint.isAnimation(app.activeSprite)))
+      log("  created ok, activeSprite=" .. tostring(app.activeSprite and app.activeSprite.filename or "nil"))
       connectSpriteEvents(app.activeSprite)
-      log("  calling refreshPanel")
       refreshPanel()
     else
       app.alert("Could not create animation.")
@@ -1030,7 +1026,6 @@ function panel.open()
         local createdPath = blueprint.createNextAnimation(bpPath)
         isRefreshingCache = false
         if createdPath then
-          app.open(createdPath)
           connectSpriteEvents(app.activeSprite)
         else
           app.alert("All animations have been started.")
