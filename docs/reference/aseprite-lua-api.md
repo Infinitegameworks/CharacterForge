@@ -15,11 +15,13 @@ for _, filename in ipairs(app.fs.listFiles(dir)) do
     local sprite = app.open(app.fs.joinPath(dir, filename))
     if sprite then
       -- inspect structure
-      sprite:close()
+      app.command.CloseFile()  -- sprite:close() may not exist on references
     end
   end
 end
 ```
+
+> **Warning**: `sprite:close()` and `sprite:save()` may not exist on sprite references obtained from `app.open()` or `app.activeSprite`. Use `app.command.CloseFile()` and `app.command.SaveFile()` instead. See `docs/solutions/aseprite-sprite-reference-and-file-operation-pitfalls.md`.
 
 **Sprite properties**:
 - `sprite.filename`, `sprite.width`, `sprite.height`
@@ -177,9 +179,17 @@ end)
 
 ## 8. Cross-File Operations
 
-Fully feasible. In GUI mode each `app.open()` flashes a tab before `close()`. In `--batch` mode, no UI.
+Feasible but has critical caveats in GUI mode. In `--batch` mode, no UI issues.
 
-Pattern for project scanning:
+> **Warning**: In GUI mode, the open-read-close pattern is fundamentally problematic:
+> - `app.open()` flashes a visible tab and triggers `sitechange` synchronously
+> - `app.command.CloseFile()` closes the active tab but switches to an ARBITRARY next tab, not the previously-active one
+> - `sprite:close()` may not exist on sprite references (use `app.command.CloseFile()`)
+> - Inside `sitechange` handlers, opening files causes re-entrancy without guards
+>
+> **Preferred approach**: Cache cross-file data at write time instead of reading on demand. See `docs/solutions/aseprite-sprite-reference-and-file-operation-pitfalls.md`.
+
+Pattern for project scanning (batch mode or when tab disruption is acceptable):
 ```lua
 local results = {}
 for _, file in ipairs(app.fs.listFiles(dir)) do
@@ -193,7 +203,7 @@ for _, file in ipairs(app.fs.listFiles(dir)) do
         tags = #sprite.tags,
         frames = #sprite.frames,
       })
-      sprite:close()
+      app.command.CloseFile()  -- sprite:close() may not exist on references
     end
   end
 end
@@ -249,7 +259,9 @@ plugin:newMenuSeparator{ group="myMenu" }
 **Hard limits**:
 - No `os.remove()` / file deletion
 - No native listbox, tree, table, progress bar widgets
-- No "hidden" sprite open in GUI mode (tabs flash)
+- No "hidden" sprite open in GUI mode (tabs flash, `CloseFile()` switches to arbitrary tab, `sitechange` fires synchronously)
+- `sprite:save()` and `sprite:close()` may not exist on references — use `app.command.SaveFile()` / `app.command.CloseFile()`
+- `Sprite()` constructor invalidates previously-obtained sprite references
 - No on-save/on-open/on-export lifecycle events (use beforecommand workaround)
 - No frame-level userData/properties
 - `sprite.layers` returns only first-level (must recurse for groups)
