@@ -732,8 +732,11 @@ local function onAnimRowClick(rect)
     buttons = { "Create", "Cancel" },
   }
   if confirm == 1 then
+    isRefreshingCache = true
     local created = blueprint.createNextAnimation(spr.filename, rect.name)
+    isRefreshingCache = false
     if created then
+      connectSpriteEvents(app.activeSprite)
       refreshPanel()
     else
       app.alert("Could not create animation.")
@@ -1002,8 +1005,12 @@ function panel.open()
           app.alert("No character file found for this sprite.")
           return
         end
+        isRefreshingCache = true
         local createdPath = blueprint.createNextAnimation(bpPath)
-        if not createdPath then
+        isRefreshingCache = false
+        if createdPath then
+          connectSpriteEvents(app.activeSprite)
+        else
           app.alert("All animations have been started.")
         end
       end)
