@@ -26,6 +26,8 @@ local slotChipRects = {}
 local animRowRects = {}
 local variantRowRects = {}
 local previewStartY = 68
+local scrollOffset = 0
+local contentHeight = 0
 
 local spriteChangeHandler = nil
 local spriteLayerNameHandler = nil
@@ -118,6 +120,7 @@ local function refreshPanel()
   if not dlg then return end
 
   local spr = app.activeSprite
+  if spr ~= currentSprite then scrollOffset = 0 end
   currentSprite = spr
   lastValidation = nil
   lastData = nil
@@ -287,7 +290,10 @@ local function drawBlueprintProgressView(gc, schema)
   end
 
   local y = previewStartY
-  drawText(gc, tostring(started) .. "/" .. tostring(#anims) .. " animations started, " .. tostring(complete) .. " complete", 8, y, utils.COLOR_TEXT)
+  local sy = y - scrollOffset
+  if sy >= previewStartY and sy < 256 then
+    drawText(gc, tostring(started) .. "/" .. tostring(#anims) .. " animations started, " .. tostring(complete) .. " complete", 8, sy, utils.COLOR_TEXT)
+  end
   y = y + 18
 
   for i, anim in ipairs(anims) do
@@ -307,24 +313,24 @@ local function drawBlueprintProgressView(gc, schema)
       dotColor = utils.COLOR_UNKNOWN
     end
 
-    local row = i - 1
-    if row % 2 == 0 then
-      fillRect(gc, 8, y - 2, 324, 14, Color{ r = 46, g = 46, b = 46, a = 255 })
+    sy = y - scrollOffset
+    if sy >= previewStartY - 4 and sy < 256 then
+      local row = i - 1
+      if row % 2 == 0 then
+        fillRect(gc, 8, sy - 2, 324, 14, Color{ r = 46, g = 46, b = 46, a = 255 })
+      end
+      drawProgressDot(gc, 12, sy + 1, dotColor)
+      drawText(gc, (anim.name or "unnamed") .. ": " .. label, 28, sy, utils.COLOR_TEXT)
+      animRowRects[#animRowRects + 1] = {
+        name = anim.name or "",
+        file = anim.file or "",
+        fileExists = fileExists,
+        x = 8, y = sy - 2, w = 324, h = 16,
+      }
     end
-    drawProgressDot(gc, 12, y + 1, dotColor)
-    drawText(gc, (anim.name or "unnamed") .. ": " .. label, 28, y, utils.COLOR_TEXT)
-    animRowRects[#animRowRects + 1] = {
-      name = anim.name or "",
-      file = anim.file or "",
-      fileExists = fileExists,
-      x = 8, y = y - 2, w = 324, h = 16,
-    }
     y = y + 16
-    if y > 230 then
-      drawText(gc, "More rows hidden by panel size.", 8, 238, utils.COLOR_WARN)
-      return
-    end
   end
+  contentHeight = y - previewStartY
 end
 
 local function readVariantDoneMap(spr, layerStatus)
@@ -371,23 +377,29 @@ local function drawAnimationProgressView(gc, result)
   local doneMap, totalVariants, doneVariants = readVariantDoneMap(spr, layerStatus)
 
   local y = previewStartY
+  local sy = y - scrollOffset
   local summaryColor = (doneVariants == totalVariants and totalVariants > 0) and utils.COLOR_PASS or utils.COLOR_TEXT
-  drawText(gc, tostring(doneVariants) .. "/" .. tostring(totalVariants) .. " variants done", 8, y, summaryColor)
+  if sy >= previewStartY and sy < 256 then
+    drawText(gc, tostring(doneVariants) .. "/" .. tostring(totalVariants) .. " variants done", 8, sy, summaryColor)
+  end
   y = y + 18
 
   local rowIdx = 0
   for _, part in ipairs(layerStatus) do
+    sy = y - scrollOffset
     if part.status == "fail" then
-      drawProgressDot(gc, 8, y + 1, utils.COLOR_FAIL)
-      drawText(gc, part.part .. ": missing", 24, y, utils.COLOR_FAIL)
+      if sy >= previewStartY - 4 and sy < 256 then
+        drawProgressDot(gc, 8, sy + 1, utils.COLOR_FAIL)
+        drawText(gc, part.part .. ": missing", 24, sy, utils.COLOR_FAIL)
+      end
       y = y + 14
-      if y > 230 then break end
       goto nextPart2
     end
 
-    drawText(gc, part.part, 8, y, utils.COLOR_TEXT)
+    if sy >= previewStartY - 4 and sy < 256 then
+      drawText(gc, part.part, 8, sy, utils.COLOR_TEXT)
+    end
     y = y + 14
-    if y > 230 then break end
 
     local hasMultipleSlots = #(part.slots or {}) > 1
     for _, slot in ipairs(part.slots or {}) do
@@ -419,38 +431,41 @@ local function drawAnimationProgressView(gc, result)
           label = label .. " done"
         end
 
-        if rowIdx % 2 == 0 then
-          fillRect(gc, 16, y - 2, 316, 14, Color{ r = 46, g = 46, b = 46, a = 255 })
-        end
-        drawProgressDot(gc, 20, y + 1, dotColor)
-        drawText(gc, label, 36, y, variant.absent and utils.COLOR_MUTED or utils.COLOR_TEXT)
+        sy = y - scrollOffset
+        if sy >= previewStartY - 4 and sy < 256 then
+          if rowIdx % 2 == 0 then
+            fillRect(gc, 16, sy - 2, 316, 14, Color{ r = 46, g = 46, b = 46, a = 255 })
+          end
+          drawProgressDot(gc, 20, sy + 1, dotColor)
+          drawText(gc, label, 36, sy, variant.absent and utils.COLOR_MUTED or utils.COLOR_TEXT)
 
-        if not variant.absent then
-          variantRowRects[#variantRowRects + 1] = {
-            partId = part.id,
-            partName = part.part,
-            slotId = slot.id,
-            slotName = slot.slot,
-            variantId = variant.id,
-            variantName = variant.variant,
-            x = 16, y = y - 2, w = 316, h = 16,
-          }
+          if not variant.absent then
+            variantRowRects[#variantRowRects + 1] = {
+              partId = part.id,
+              partName = part.part,
+              slotId = slot.id,
+              slotName = slot.slot,
+              variantId = variant.id,
+              variantName = variant.variant,
+              x = 16, y = sy - 2, w = 316, h = 16,
+            }
+          end
         end
 
         rowIdx = rowIdx + 1
         y = y + 14
-        if y > 230 then
-          drawText(gc, "More rows hidden by panel size.", 8, 238, utils.COLOR_WARN)
-          return
-        end
       end
     end
     ::nextPart2::
   end
+  contentHeight = y - previewStartY
 
   local issueCount = #(result.errors or {}) + #(result.warnings or {})
-  if issueCount > 0 and y <= 240 then
-    drawText(gc, tostring(issueCount) .. " issue(s)", 8, y + 4, utils.COLOR_WARN)
+  if issueCount > 0 then
+    sy = y - scrollOffset + 4
+    if sy >= previewStartY and sy < 256 then
+      drawText(gc, tostring(issueCount) .. " issue(s)", 8, sy, utils.COLOR_WARN)
+    end
   end
 end
 
@@ -908,6 +923,12 @@ function panel.open()
     height = 260,
     onpaint = onPaint,
     onmousedown = onCanvasMouseDown,
+    onwheel = function(ev)
+      local visibleHeight = 256 - previewStartY
+      local maxScroll = math.max(0, contentHeight - visibleHeight)
+      scrollOffset = math.max(0, math.min(maxScroll, scrollOffset - (ev.deltaY or 0) * 28))
+      if dlg then dlg:repaint() end
+    end,
   }
   dlg:button{
     id = "btnDetails",
