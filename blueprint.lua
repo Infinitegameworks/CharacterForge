@@ -1383,4 +1383,53 @@ function blueprint.toggleActiveVariantAbsent()
   return props.intentionally_absent
 end
 
+function blueprint.checkAllVariantsDone(sprite)
+  if not sprite then return false end
+  local data = blueprint.readAnimationData(sprite)
+  if not data or not data.cached_schema then return false end
+  local normalized = blueprint.normalizeSchema(data.cached_schema)
+
+  for _, part in ipairs(normalized.body_parts or {}) do
+    local partLayer = blueprint.findLayerByIdOrName(sprite.layers, "part", part.id, part.name)
+    if not partLayer then return false end
+    for _, slot in ipairs(part.slots or {}) do
+      for _, variant in ipairs(slot.variants or {}) do
+        local vl = blueprint.findVariantLayer(partLayer, slot, variant)
+        if not vl then return false end
+        local props = vl.properties(PK)
+        local absent = props and props.intentionally_absent
+        local done = props and props.marked_done
+        if not absent and not done then return false end
+      end
+    end
+  end
+  return true
+end
+
+function blueprint.syncAnimationStatus(animSprite, status)
+  if not animSprite then return false end
+  local data = blueprint.readAnimationData(animSprite)
+  if not data or not data.blueprint_ref or data.blueprint_ref == "" then return false end
+  if not animSprite.filename or animSprite.filename == "" then return false end
+  local dir = app.fs.filePath(animSprite.filename)
+  local bpPath = app.fs.joinPath(dir, data.blueprint_ref)
+  if not app.fs.isFile(bpPath) then return false end
+
+  local bpSprite, shouldClose = openSpriteForPath(bpPath)
+  if not bpSprite then return false end
+  local schema = blueprint.readBlueprintSchema(bpSprite)
+  if schema then
+    for i, anim in ipairs(schema.animations or {}) do
+      if anim.name == data.animation_name then
+        schema.animations[i].status = status
+        break
+      end
+    end
+    blueprint.writeBlueprintSchema(bpSprite, schema)
+    bpSprite:save()
+  end
+  if shouldClose then bpSprite:close() end
+  return true
+end
+
 return blueprint

@@ -24,6 +24,8 @@ local blueprintMissing = false
 local selectedSlotFilter = "all"
 local slotChipRects = {}
 local animRowRects = {}
+local variantRowRects = {}
+local isSyncing = false
 local previewStartY = 68
 
 local spriteChangeHandler = nil
@@ -242,7 +244,7 @@ local function checkSchemaFreshness(spr)
 end
 
 local function onSiteChange()
-  if isRefreshingCache then return end
+  if isRefreshingCache or isSyncing then return end
   local ok, err = pcall(function()
     local spr = app.activeSprite
     if spr ~= currentSprite then
@@ -341,7 +343,39 @@ local function drawBlueprintProgressView(gc, schema)
   end
 end
 
+local function readVariantDoneMap(spr, layerStatus)
+  local doneMap = {}
+  local total = 0
+  local done = 0
+  if not spr then return doneMap, total, done end
+
+  for _, part in ipairs(layerStatus) do
+    local partLayer = blueprint.findLayerByIdOrName(spr.layers, "part", part.id, part.part)
+    if not partLayer then goto nextPart end
+    for _, slot in ipairs(part.slots or {}) do
+      for _, variant in ipairs(slot.variants or {}) do
+        if variant.absent then goto nextVariant end
+        total = total + 1
+        local slotObj = { id = slot.id, name = slot.slot }
+        local variantObj = { id = variant.id, name = variant.variant }
+        local vl = blueprint.findVariantLayer(partLayer, slotObj, variantObj)
+        if vl then
+          local props = vl.properties(blueprint.PK)
+          if props and props.marked_done then
+            doneMap[part.id .. "/" .. slot.id .. "/" .. variant.id] = true
+            done = done + 1
+          end
+        end
+        ::nextVariant::
+      end
+    end
+    ::nextPart::
+  end
+  return doneMap, total, done
+end
+
 local function drawAnimationProgressView(gc, result)
+  variantRowRects = {}
   if not result then return end
   local layerStatus = result.layer_status or {}
   if #layerStatus == 0 then
@@ -349,38 +383,90 @@ local function drawAnimationProgressView(gc, result)
     return
   end
 
+  local spr = app.activeSprite
+  local doneMap, totalVariants, doneVariants = readVariantDoneMap(spr, layerStatus)
+
   local y = previewStartY
-  for i, part in ipairs(layerStatus) do
-    local label
-    local dotColor
+  local summaryColor = (doneVariants == totalVariants and totalVariants > 0) and utils.COLOR_PASS or utils.COLOR_TEXT
+  drawText(gc, tostring(doneVariants) .. "/" .. tostring(totalVariants) .. " variants done", 8, y, summaryColor)
+  y = y + 18
+
+  local rowIdx = 0
+  for _, part in ipairs(layerStatus) do
     if part.status == "fail" then
-      label = "missing"
-      dotColor = utils.COLOR_FAIL
-    elseif (part.base_frames or 0) > 0 then
-      label = "drawn (" .. tostring(part.base_frames) .. "f)"
-      dotColor = utils.COLOR_PASS
-    else
-      label = "empty"
-      dotColor = utils.COLOR_UNKNOWN
+      drawProgressDot(gc, 8, y + 1, utils.COLOR_FAIL)
+      drawText(gc, part.part .. ": missing", 24, y, utils.COLOR_FAIL)
+      y = y + 14
+      if y > 230 then break end
+      goto nextPart2
     end
 
-    local row = i - 1
-    if row % 2 == 0 then
-      fillRect(gc, 8, y - 2, 324, 14, Color{ r = 46, g = 46, b = 46, a = 255 })
+    drawText(gc, part.part, 8, y, utils.COLOR_TEXT)
+    y = y + 14
+    if y > 230 then break end
+
+    local hasMultipleSlots = #(part.slots or {}) > 1
+    for _, slot in ipairs(part.slots or {}) do
+      for _, variant in ipairs(slot.variants or {}) do
+        local key = part.id .. "/" .. slot.id .. "/" .. variant.id
+        local isDone = doneMap[key]
+
+        local dotColor
+        if variant.absent then
+          dotColor = utils.COLOR_ABSENT
+        elseif variant.status == "fail" then
+          dotColor = utils.COLOR_FAIL
+        elseif isDone then
+          dotColor = utils.COLOR_PASS
+        else
+          dotColor = utils.COLOR_UNKNOWN
+        end
+
+        local label = variant.variant
+        if hasMultipleSlots then
+          label = slot.slot .. "/" .. label
+        end
+        if variant.frames > 0 then
+          label = label .. " (" .. tostring(variant.frames) .. "f)"
+        end
+        if variant.absent then
+          label = label .. " absent"
+        elseif isDone then
+          label = label .. " done"
+        end
+
+        if rowIdx % 2 == 0 then
+          fillRect(gc, 16, y - 2, 316, 14, Color{ r = 46, g = 46, b = 46, a = 255 })
+        end
+        drawProgressDot(gc, 20, y + 1, dotColor)
+        drawText(gc, label, 36, y, variant.absent and utils.COLOR_MUTED or utils.COLOR_TEXT)
+
+        if not variant.absent then
+          variantRowRects[#variantRowRects + 1] = {
+            partId = part.id,
+            partName = part.part,
+            slotId = slot.id,
+            slotName = slot.slot,
+            variantId = variant.id,
+            variantName = variant.variant,
+            x = 16, y = y - 2, w = 316, h = 16,
+          }
+        end
+
+        rowIdx = rowIdx + 1
+        y = y + 14
+        if y > 230 then
+          drawText(gc, "More rows hidden by panel size.", 8, 238, utils.COLOR_WARN)
+          return
+        end
+      end
     end
-    drawProgressDot(gc, 12, y + 1, dotColor)
-    drawText(gc, (part.part or "unknown") .. ": " .. label, 28, y, utils.COLOR_TEXT)
-    y = y + 16
-    if y > 230 then
-      drawText(gc, "More rows hidden by panel size.", 8, 238, utils.COLOR_WARN)
-      return
-    end
+    ::nextPart2::
   end
 
   local issueCount = #(result.errors or {}) + #(result.warnings or {})
-  if issueCount > 0 then
-    local footerY = math.min(y + 4, 240)
-    drawText(gc, tostring(issueCount) .. " issue(s)", 8, footerY, utils.COLOR_WARN)
+  if issueCount > 0 and y <= 240 then
+    drawText(gc, tostring(issueCount) .. " issue(s)", 8, y + 4, utils.COLOR_WARN)
   end
 end
 
@@ -594,6 +680,7 @@ local function onPaint(ev)
     gc:fillRect(Rectangle(0, 0, w, h))
 
     animRowRects = {}
+    variantRowRects = {}
 
     fillRect(gc, 0, 0, w, 34, utils.COLOR_PANEL)
     drawText(gc, statusText, 8, 7, utils.COLOR_TEXT)
@@ -642,6 +729,31 @@ local function onAnimRowClick(rect)
   end
 end
 
+local function onVariantRowClick(rect)
+  local spr = app.activeSprite
+  if not spr then return end
+
+  local partLayer = blueprint.findLayerByIdOrName(spr.layers, "part", rect.partId, rect.partName)
+  if not partLayer then return end
+
+  local slotObj = { id = rect.slotId, name = rect.slotName }
+  local variantObj = { id = rect.variantId, name = rect.variantName }
+  local variantLayer = blueprint.findVariantLayer(partLayer, slotObj, variantObj)
+  if not variantLayer then return end
+
+  app.transaction(function()
+    local props = variantLayer.properties(blueprint.PK)
+    props.marked_done = not props.marked_done
+  end)
+
+  local allDone = blueprint.checkAllVariantsDone(spr)
+  isSyncing = true
+  blueprint.syncAnimationStatus(spr, allDone and "valid" or "started")
+  isSyncing = false
+
+  refreshPanel()
+end
+
 local function onCanvasMouseDown(ev)
   local ok, err = pcall(function()
     local x = ev.x or 0
@@ -664,6 +776,12 @@ local function onCanvasMouseDown(ev)
     for _, rect in ipairs(animRowRects or {}) do
       if x >= rect.x and x <= rect.x + rect.w and y >= rect.y and y <= rect.y + rect.h then
         onAnimRowClick(rect)
+        return
+      end
+    end
+    for _, rect in ipairs(variantRowRects or {}) do
+      if x >= rect.x and x <= rect.x + rect.w and y >= rect.y and y <= rect.y + rect.h then
+        onVariantRowClick(rect)
         return
       end
     end
