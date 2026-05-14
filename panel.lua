@@ -28,6 +28,7 @@ local variantRowRects = {}
 local previewStartY = 68
 local scrollOffset = 0
 local contentHeight = 0
+local isDraggingScrollbar = false
 
 local spriteChangeHandler = nil
 local spriteLayerNameHandler = nil
@@ -679,14 +680,14 @@ local function onPaint(ev)
 
     local visibleHeight = 256 - previewStartY
     if contentHeight > visibleHeight then
-      local trackX = w - 6
+      local trackX = w - 10
       local trackY = previewStartY
       local trackH = visibleHeight
       local thumbH = math.max(16, math.floor(trackH * visibleHeight / contentHeight))
       local maxScroll = contentHeight - visibleHeight
       local thumbY = trackY + math.floor((trackH - thumbH) * scrollOffset / maxScroll)
-      fillRect(gc, trackX, trackY, 4, trackH, Color{ r = 50, g = 50, b = 50, a = 255 })
-      fillRect(gc, trackX, thumbY, 4, thumbH, Color{ r = 100, g = 100, b = 100, a = 255 })
+      fillRect(gc, trackX, trackY, 8, trackH, Color{ r = 50, g = 50, b = 50, a = 255 })
+      fillRect(gc, trackX, thumbY, 8, thumbH, Color{ r = 100, g = 100, b = 100, a = 255 })
     end
   end)
   if not ok then log("CF onPaint error: " .. tostring(err)) end
@@ -744,10 +745,27 @@ local function onVariantRowClick(rect)
   refreshPanel()
 end
 
+local function scrollbarHitAndDrag(y)
+  local visibleHeight = 256 - previewStartY
+  if contentHeight <= visibleHeight then return false end
+  local maxScroll = contentHeight - visibleHeight
+  local trackY = previewStartY
+  local trackH = visibleHeight
+  local ratio = math.max(0, math.min(1, (y - trackY) / trackH))
+  scrollOffset = math.floor(ratio * maxScroll)
+  if dlg then dlg:repaint() end
+  return true
+end
+
 local function onCanvasMouseDown(ev)
   local ok, err = pcall(function()
     local x = ev.x or 0
     local y = ev.y or 0
+    if x >= 326 and contentHeight > (256 - previewStartY) then
+      isDraggingScrollbar = true
+      scrollbarHitAndDrag(y)
+      return
+    end
     for _, rect in ipairs(slotChipRects or {}) do
       if x >= rect.x and x <= rect.x + rect.w and y >= rect.y and y <= rect.y + rect.h then
         selectedSlotFilter = rect.name
@@ -916,6 +934,14 @@ function panel.open()
     height = 260,
     onpaint = onPaint,
     onmousedown = onCanvasMouseDown,
+    onmousemove = function(ev)
+      if isDraggingScrollbar then
+        scrollbarHitAndDrag(ev.y or 0)
+      end
+    end,
+    onmouseup = function(ev)
+      isDraggingScrollbar = false
+    end,
     onwheel = function(ev)
       local visibleHeight = 256 - previewStartY
       local maxScroll = math.max(0, contentHeight - visibleHeight)
