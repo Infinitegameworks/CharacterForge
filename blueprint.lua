@@ -13,6 +13,17 @@ local function log(msg)
   if f then f:write(os.date("%H:%M:%S") .. " [blueprint] " .. msg .. "\n"); f:flush(); f:close() end
 end
 
+local function safeCloseSprite(sprite)
+  local ok, err = pcall(function()
+    if sprite and sprite.close then
+      sprite:close()
+    else
+      app.command.CloseFile()
+    end
+  end)
+  if not ok then log("safeCloseSprite error: " .. tostring(err)) end
+end
+
 local function trim(value)
   return tostring(value or ""):match("^%s*(.-)%s*$")
 end
@@ -699,7 +710,7 @@ local function addBlueprintResult(results, seen, path)
     local name = schema and schema.character_name or app.fs.fileTitle(path)
     table.insert(results, { name = name, path = path, file = app.fs.fileName(path) })
   end
-  spr:close()
+  safeCloseSprite(spr)
 end
 
 local function openSpriteForPath(path)
@@ -820,7 +831,7 @@ function blueprint.showNewAnimationDialog()
 
   local schema = blueprint.readBlueprintSchema(bpSprite)
   if not schema then
-    if shouldCloseBlueprint then bpSprite:close() end
+    if shouldCloseBlueprint then safeCloseSprite(bpSprite) end
     app.alert("Selected file is not a CharacterForge blueprint.")
     return
   end
@@ -837,7 +848,7 @@ function blueprint.showNewAnimationDialog()
       buttons = { "Overwrite", "Cancel" },
     }
     if overwrite ~= 1 then
-      if shouldCloseBlueprint then bpSprite:close() end
+      if shouldCloseBlueprint then safeCloseSprite(bpSprite) end
       return
     end
   end
@@ -864,7 +875,7 @@ function blueprint.showNewAnimationDialog()
   schema.animations = animations
   blueprint.writeBlueprintSchema(bpSprite, schema)
   app.command.SaveFile()
-  if shouldCloseBlueprint then bpSprite:close() end
+  if shouldCloseBlueprint then safeCloseSprite(bpSprite) end
   blueprint.rememberBlueprint(bpPath)
 
   local newSprite = Sprite(bpWidth, bpHeight, bpColorMode)
@@ -958,7 +969,7 @@ function blueprint.showRegisterDialog()
 
   local schema = blueprint.readBlueprintSchema(bpSprite)
   if not schema then
-    if shouldCloseBlueprint then bpSprite:close() end
+    if shouldCloseBlueprint then safeCloseSprite(bpSprite) end
     app.alert("Selected file is not a CharacterForge blueprint.")
     return
   end
@@ -981,7 +992,7 @@ function blueprint.showRegisterDialog()
       buttons = { "Register", "Cancel" },
     }
     if proceed ~= 1 then
-      if shouldCloseBlueprint then bpSprite:close() end
+      if shouldCloseBlueprint then safeCloseSprite(bpSprite) end
       return
     end
   end
@@ -1024,7 +1035,7 @@ function blueprint.showRegisterDialog()
   schema.animations = animations
   blueprint.writeBlueprintSchema(bpSprite, schema)
   app.command.SaveFile()
-  if shouldCloseBlueprint then bpSprite:close() end
+  if shouldCloseBlueprint then safeCloseSprite(bpSprite) end
   blueprint.rememberBlueprint(bpPath)
 
   app.alert("Linked '" .. animName .. "' to " .. charName .. " character.")
@@ -1084,7 +1095,7 @@ function blueprint.createNextAnimation(bpPath, targetAnimName)
 
   local schema = blueprint.readBlueprintSchema(bpSprite)
   if not schema then
-    if shouldCloseBlueprint then bpSprite:close() end
+    if shouldCloseBlueprint then safeCloseSprite(bpSprite) end
     return nil
   end
 
@@ -1107,13 +1118,13 @@ function blueprint.createNextAnimation(bpPath, targetAnimName)
 
   if not nextAnim then
     log("  no matching animation found")
-    if shouldCloseBlueprint then bpSprite:close() end
+    if shouldCloseBlueprint then safeCloseSprite(bpSprite) end
     return nil
   end
 
   local animName = nextAnim.name or ""
   if animName == "" then
-    if shouldCloseBlueprint then bpSprite:close() end
+    if shouldCloseBlueprint then safeCloseSprite(bpSprite) end
     return nil
   end
 
@@ -1142,7 +1153,7 @@ function blueprint.createNextAnimation(bpPath, targetAnimName)
   app.command.SaveFile()
   log("  blueprint saved before Sprite()")
 
-  if shouldCloseBlueprint then bpSprite:close() end
+  if shouldCloseBlueprint then safeCloseSprite(bpSprite) end
   blueprint.rememberBlueprint(bpPath)
 
   local newSprite = Sprite(bpWidth, bpHeight, bpColorMode)
