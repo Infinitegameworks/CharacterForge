@@ -23,6 +23,7 @@ local detailText = ""
 local blueprintMissing = false
 local selectedSlotFilter = "all"
 local slotChipRects = {}
+local animRowRects = {}
 local previewStartY = 68
 
 local spriteChangeHandler = nil
@@ -274,6 +275,7 @@ local function drawProgressDot(gc, x, y, dotColor)
 end
 
 local function drawBlueprintProgressView(gc, schema)
+  animRowRects = {}
   if not schema then return end
   local anims = schema.animations or {}
   if #anims == 0 then
@@ -305,12 +307,15 @@ local function drawBlueprintProgressView(gc, schema)
   for i, anim in ipairs(anims) do
     local label
     local dotColor
+    local fileExists = false
     if anim.status == "valid" then
       label = "complete"
       dotColor = utils.COLOR_PASS
+      fileExists = true
     elseif bpDir and anim.file and anim.file ~= "" and app.fs.isFile(app.fs.joinPath(bpDir, anim.file)) then
       label = "started"
       dotColor = utils.COLOR_WARN
+      fileExists = true
     else
       label = "not created"
       dotColor = utils.COLOR_UNKNOWN
@@ -322,6 +327,12 @@ local function drawBlueprintProgressView(gc, schema)
     end
     drawProgressDot(gc, 12, y + 1, dotColor)
     drawText(gc, (anim.name or "unnamed") .. ": " .. label, 28, y, utils.COLOR_TEXT)
+    animRowRects[#animRowRects + 1] = {
+      name = anim.name or "",
+      file = anim.file or "",
+      fileExists = fileExists,
+      x = 8, y = y - 2, w = 324, h = 16,
+    }
     y = y + 16
     if y > 230 then
       drawText(gc, "More rows hidden by panel size.", 8, 238, utils.COLOR_WARN)
@@ -582,6 +593,8 @@ local function onPaint(ev)
     gc.color = utils.COLOR_BG
     gc:fillRect(Rectangle(0, 0, w, h))
 
+    animRowRects = {}
+
     fillRect(gc, 0, 0, w, 34, utils.COLOR_PANEL)
     drawText(gc, statusText, 8, 7, utils.COLOR_TEXT)
     drawText(gc, detailText, 8, 22, blueprintMissing and utils.COLOR_WARN or utils.COLOR_MUTED)
@@ -600,6 +613,35 @@ local function onPaint(ev)
   if not ok then log("CF onPaint error: " .. tostring(err)) end
 end
 
+local function onAnimRowClick(rect)
+  local spr = app.activeSprite
+  if not spr or not spr.filename or spr.filename == "" then return end
+  local dir = app.fs.filePath(spr.filename)
+
+  if rect.fileExists and rect.file ~= "" then
+    local path = app.fs.joinPath(dir, rect.file)
+    if app.fs.isFile(path) then
+      app.open(path)
+      refreshPanel()
+      return
+    end
+  end
+
+  local confirm = app.alert{
+    title = "Create Animation",
+    text = "Create '" .. rect.name .. "' animation?",
+    buttons = { "Create", "Cancel" },
+  }
+  if confirm == 1 then
+    local created = blueprint.createNextAnimation(spr.filename, rect.name)
+    if created then
+      refreshPanel()
+    else
+      app.alert("Could not create animation.")
+    end
+  end
+end
+
 local function onCanvasMouseDown(ev)
   local ok, err = pcall(function()
     local x = ev.x or 0
@@ -616,6 +658,12 @@ local function onCanvasMouseDown(ev)
           end
         end
         refreshPanel()
+        return
+      end
+    end
+    for _, rect in ipairs(animRowRects or {}) do
+      if x >= rect.x and x <= rect.x + rect.w and y >= rect.y and y <= rect.y + rect.h then
+        onAnimRowClick(rect)
         return
       end
     end

@@ -1059,7 +1059,7 @@ function blueprint.showCreateFromCurrentDialog()
   app.alert("Blueprint created from current sprite: " .. charName)
 end
 
-function blueprint.createNextAnimation(bpPath)
+function blueprint.createNextAnimation(bpPath, targetAnimName)
   if not bpPath or bpPath == "" then return nil end
   if not app.fs.isFile(bpPath) then return nil end
 
@@ -1073,10 +1073,19 @@ function blueprint.createNextAnimation(bpPath)
   end
 
   local nextAnim = nil
-  for _, anim in ipairs(schema.animations or {}) do
-    if anim.status == "missing" then
-      nextAnim = anim
-      break
+  if targetAnimName then
+    for _, anim in ipairs(schema.animations or {}) do
+      if anim.name == targetAnimName then
+        nextAnim = anim
+        break
+      end
+    end
+  else
+    for _, anim in ipairs(schema.animations or {}) do
+      if anim.status == "missing" then
+        nextAnim = anim
+        break
+      end
     end
   end
 
