@@ -29,6 +29,11 @@ local previewStartY = 68
 local scrollOffset = 0
 local contentHeight = 0
 local isDraggingScrollbar = false
+local hoverAnimRowKey = nil
+local hoverVariantRowKey = nil
+
+local LIST_BOTTOM = 236
+local FOOTER_Y = 244
 
 local spriteChangeHandler = nil
 local spriteLayerNameHandler = nil
@@ -96,6 +101,8 @@ local function updateLabels()
   end
   dlg:modify{ id = "btnSoloSlot", enabled = multiSlot }
   dlg:modify{ id = "btnHideSlot", enabled = multiSlot }
+  local hasBlueprint = lastData ~= nil and not blueprintMissing
+  dlg:modify{ id = "btnGoToBlueprint", enabled = hasBlueprint }
   dlg:repaint()
 end
 
@@ -103,7 +110,11 @@ local function refreshPanel()
   if not dlg then return end
 
   local spr = app.activeSprite
-  if spr ~= currentSprite then scrollOffset = 0 end
+  if spr ~= currentSprite then
+    scrollOffset = 0
+    hoverAnimRowKey = nil
+    hoverVariantRowKey = nil
+  end
   currentSprite = spr
   lastValidation = nil
   lastData = nil
@@ -130,7 +141,7 @@ local function refreshPanel()
   end
 
   if not blueprint.isAnimation(spr) then
-    statusText = "Not registered"
+    statusText = "Not linked"
     detailText = "Use Link Animation or Blueprint From Current Sprite."
     cachedLayerHash = validator.buildLayerTreeHash(spr)
     updateLabels()
@@ -155,7 +166,7 @@ local function refreshPanel()
 
   statusText = (data.character_name or "character") .. " / " .. (data.animation_name or "animation")
   if blueprintMissing then
-    detailText = "Character file not found; checking from saved definition."
+    detailText = "Blueprint not found: " .. (data.blueprint_ref or "?")
   elseif lastValidation.result == "fail" then
     detailText = tostring(#lastValidation.errors) .. " error(s); save may be blocked."
   elseif lastValidation.result == "warn" then
@@ -246,6 +257,14 @@ local function drawProgressDot(gc, x, y, dotColor)
   gc:fillRect(Rectangle(x, y, 8, 8))
 end
 
+local function animRowKey(anim)
+  return tostring(anim.name or "") .. "|" .. tostring(anim.file or "")
+end
+
+local function variantRowKey(partId, slotId, variantId)
+  return tostring(partId or "") .. "/" .. tostring(slotId or "") .. "/" .. tostring(variantId or "")
+end
+
 local function drawBlueprintProgressView(gc, schema)
   animRowRects = {}
   if not schema then return end
@@ -274,7 +293,7 @@ local function drawBlueprintProgressView(gc, schema)
 
   local y = previewStartY
   local sy = y - scrollOffset
-  if sy >= previewStartY and sy < 256 then
+  if sy >= previewStartY and sy < LIST_BOTTOM then
     drawText(gc, tostring(started) .. "/" .. tostring(#anims) .. " animations started, " .. tostring(complete) .. " complete", 8, sy, utils.COLOR_TEXT)
   end
   y = y + 18
@@ -297,14 +316,20 @@ local function drawBlueprintProgressView(gc, schema)
     end
 
     sy = y - scrollOffset
-    if sy >= previewStartY - 4 and sy < 256 then
+    if sy >= previewStartY - 4 and sy < LIST_BOTTOM then
       local row = i - 1
-      if row % 2 == 0 then
+      local rowKey = animRowKey(anim)
+      local hovered = hoverAnimRowKey == rowKey
+      if hovered then
+        fillRect(gc, 8, sy - 2, 324, 14, Color{ r = 64, g = 64, b = 64, a = 255 })
+      elseif row % 2 == 0 then
         fillRect(gc, 8, sy - 2, 324, 14, Color{ r = 46, g = 46, b = 46, a = 255 })
       end
       drawProgressDot(gc, 12, sy + 1, dotColor)
       drawText(gc, (anim.name or "unnamed") .. ": " .. label, 28, sy, utils.COLOR_TEXT)
+      drawText(gc, fileExists and "open" or "create", 286, sy, hovered and utils.COLOR_TEXT or utils.COLOR_MUTED)
       animRowRects[#animRowRects + 1] = {
+        key = rowKey,
         name = anim.name or "",
         file = anim.file or "",
         fileExists = fileExists,
@@ -362,8 +387,8 @@ local function drawAnimationProgressView(gc, result)
   local y = previewStartY
   local sy = y - scrollOffset
   local summaryColor = (doneVariants == totalVariants and totalVariants > 0) and utils.COLOR_PASS or utils.COLOR_TEXT
-  if sy >= previewStartY and sy < 256 then
-    drawText(gc, tostring(doneVariants) .. "/" .. tostring(totalVariants) .. " variants done", 8, sy, summaryColor)
+  if sy >= previewStartY and sy < LIST_BOTTOM then
+    drawText(gc, tostring(doneVariants) .. "/" .. tostring(totalVariants) .. " drawing groups done", 8, sy, summaryColor)
   end
   y = y + 18
 
@@ -371,7 +396,7 @@ local function drawAnimationProgressView(gc, result)
   for _, part in ipairs(layerStatus) do
     sy = y - scrollOffset
     if part.status == "fail" then
-      if sy >= previewStartY - 4 and sy < 256 then
+      if sy >= previewStartY - 4 and sy < LIST_BOTTOM then
         drawProgressDot(gc, 8, sy + 1, utils.COLOR_FAIL)
         drawText(gc, part.part .. ": missing", 24, sy, utils.COLOR_FAIL)
       end
@@ -379,7 +404,7 @@ local function drawAnimationProgressView(gc, result)
       goto nextPart2
     end
 
-    if sy >= previewStartY - 4 and sy < 256 then
+    if sy >= previewStartY - 4 and sy < LIST_BOTTOM then
       drawText(gc, part.part, 8, sy, utils.COLOR_TEXT)
     end
     y = y + 14
@@ -409,21 +434,27 @@ local function drawAnimationProgressView(gc, result)
           label = label .. " (" .. tostring(variant.frames) .. "f)"
         end
         if variant.absent then
-          label = label .. " absent"
+          label = label .. " skipped"
         elseif isDone then
           label = label .. " done"
         end
 
         sy = y - scrollOffset
-        if sy >= previewStartY - 4 and sy < 256 then
-          if rowIdx % 2 == 0 then
+        if sy >= previewStartY - 4 and sy < LIST_BOTTOM then
+          local key = variantRowKey(part.id, slot.id, variant.id)
+          local hovered = hoverVariantRowKey == key
+          if hovered then
+            fillRect(gc, 16, sy - 2, 316, 14, Color{ r = 64, g = 64, b = 64, a = 255 })
+          elseif rowIdx % 2 == 0 then
             fillRect(gc, 16, sy - 2, 316, 14, Color{ r = 46, g = 46, b = 46, a = 255 })
           end
           drawProgressDot(gc, 20, sy + 1, dotColor)
           drawText(gc, label, 36, sy, variant.absent and utils.COLOR_MUTED or utils.COLOR_TEXT)
 
           if not variant.absent then
+            drawText(gc, isDone and "undo" or "done", 294, sy, hovered and utils.COLOR_TEXT or utils.COLOR_MUTED)
             variantRowRects[#variantRowRects + 1] = {
+              key = key,
               partId = part.id,
               partName = part.part,
               slotId = slot.id,
@@ -446,9 +477,23 @@ local function drawAnimationProgressView(gc, result)
   local issueCount = #(result.errors or {}) + #(result.warnings or {})
   if issueCount > 0 then
     sy = y - scrollOffset + 4
-    if sy >= previewStartY and sy < 256 then
+    if sy >= previewStartY and sy < LIST_BOTTOM then
       drawText(gc, tostring(issueCount) .. " issue(s)", 8, sy, utils.COLOR_WARN)
     end
+  end
+end
+
+local function drawFooterHint(gc)
+  local spr = app.activeSprite
+  local hint = nil
+  if lastSchema and spr and blueprint.isBlueprint(spr) then
+    hint = "Click an animation row to open or create."
+  elseif lastValidation then
+    hint = "Click a drawing row to toggle done."
+  end
+  if hint then
+    fillRect(gc, 0, LIST_BOTTOM, 340, 24, utils.COLOR_BG)
+    drawText(gc, hint, 8, FOOTER_Y, utils.COLOR_MUTED)
   end
 end
 
@@ -504,9 +549,9 @@ local function drawSlotChips(gc, schema)
 end
 
 local function variantLabel(variant)
-  if variant.type == "state" then return "S" end
+  if variant.type == "state" then return "E" end
   if variant.name == "base" then return "B" end
-  return "V"
+  return "O"
 end
 
 local function drawBlueprintPreview(gc, schema)
@@ -678,7 +723,9 @@ local function onPaint(ev)
       drawAnimationProgressView(gc, lastValidation)
     end
 
-    local visibleHeight = 256 - previewStartY
+    drawFooterHint(gc)
+
+    local visibleHeight = LIST_BOTTOM - previewStartY
     if contentHeight > visibleHeight then
       local trackX = w - 10
       local trackY = previewStartY
@@ -714,12 +761,12 @@ local function onAnimRowClick(rect)
   }
   if confirm == 1 then
     isRefreshingCache = true
-    local created = blueprint.createNextAnimation(spr.filename, rect.name)
+    local created, reason = blueprint.createNextAnimation(spr.filename, rect.name)
     isRefreshingCache = false
     if created then
       connectSpriteEvents(app.activeSprite)
       refreshPanel()
-    else
+    elseif reason ~= "cancelled" then
       app.alert("Could not create animation.")
     end
   end
@@ -746,7 +793,7 @@ local function onVariantRowClick(rect)
 end
 
 local function scrollbarHitAndDrag(y)
-  local visibleHeight = 256 - previewStartY
+  local visibleHeight = LIST_BOTTOM - previewStartY
   if contentHeight <= visibleHeight then return false end
   local maxScroll = contentHeight - visibleHeight
   local trackY = previewStartY
@@ -757,11 +804,38 @@ local function scrollbarHitAndDrag(y)
   return true
 end
 
+local function hitTestRows(x, y)
+  local oldAnim = hoverAnimRowKey
+  local oldVariant = hoverVariantRowKey
+  hoverAnimRowKey = nil
+  hoverVariantRowKey = nil
+
+  for _, rect in ipairs(animRowRects or {}) do
+    if x >= rect.x and x <= rect.x + rect.w and y >= rect.y and y <= rect.y + rect.h then
+      hoverAnimRowKey = rect.key
+      break
+    end
+  end
+
+  if not hoverAnimRowKey then
+    for _, rect in ipairs(variantRowRects or {}) do
+      if x >= rect.x and x <= rect.x + rect.w and y >= rect.y and y <= rect.y + rect.h then
+        hoverVariantRowKey = rect.key
+        break
+      end
+    end
+  end
+
+  if oldAnim ~= hoverAnimRowKey or oldVariant ~= hoverVariantRowKey then
+    if dlg then dlg:repaint() end
+  end
+end
+
 local function onCanvasMouseDown(ev)
   local ok, err = pcall(function()
     local x = ev.x or 0
     local y = ev.y or 0
-    if x >= 326 and contentHeight > (256 - previewStartY) then
+    if x >= 326 and contentHeight > (LIST_BOTTOM - previewStartY) then
       isDraggingScrollbar = true
       scrollbarHitAndDrag(y)
       return
@@ -841,7 +915,7 @@ local function showSettingsDialog()
             blueprint.ensureLayerStructure(app.activeSprite, schema, { rename = true })
           end)
         else
-          app.alert("Open a registered animation first.")
+          app.alert("Open a linked animation first.")
         end
       end)
     end
@@ -857,7 +931,7 @@ local function showSettingsDialog()
             blueprint.syncVariantFrames(app.activeSprite, schema)
           end)
         else
-          app.alert("Open a registered animation first.")
+          app.alert("Open a linked animation first.")
         end
       end)
     end
@@ -925,6 +999,8 @@ function panel.open()
       lastData = nil
       lastSchema = nil
       lastCheckedFilename = nil
+      hoverAnimRowKey = nil
+      hoverVariantRowKey = nil
     end
   }
 
@@ -937,13 +1013,15 @@ function panel.open()
     onmousemove = function(ev)
       if isDraggingScrollbar then
         scrollbarHitAndDrag(ev.y or 0)
+      else
+        hitTestRows(ev.x or 0, ev.y or 0)
       end
     end,
     onmouseup = function(ev)
       isDraggingScrollbar = false
     end,
     onwheel = function(ev)
-      local visibleHeight = 256 - previewStartY
+      local visibleHeight = LIST_BOTTOM - previewStartY
       local maxScroll = math.max(0, contentHeight - visibleHeight)
       scrollOffset = math.max(0, math.min(maxScroll, scrollOffset - (ev.deltaY or 0) * 28))
       if dlg then dlg:repaint() end
@@ -958,6 +1036,27 @@ function panel.open()
   }
   dlg:label{ id = "statusLabel", text = "Loading..." }
   dlg:label{ id = "detailLabel", text = "" }
+
+  dlg:button{
+    id = "btnGoToBlueprint",
+    text = "Go to Blueprint",
+    onclick = function()
+      local ok, err = pcall(function()
+        local spr = app.activeSprite
+        if not spr then return end
+        local data = lastData
+        if not data then return end
+        local bpPath = blueprintPathForAnimation(spr, data)
+        if bpPath and app.fs.isFile(bpPath) then
+          app.open(bpPath)
+          refreshPanel()
+        else
+          app.alert("Blueprint file not found: " .. tostring(data.blueprint_ref or ""))
+        end
+      end)
+      if not ok then app.alert("Error: " .. tostring(err)) end
+    end
+  }
 
   dlg:separator{ text = "Create" }
   dlg:button{
@@ -1009,7 +1108,7 @@ function panel.open()
   dlg:separator{ text = "View" }
   dlg:combobox{
     id = "slotFilter",
-    label = "Slot:",
+    label = "Layer Set:",
     options = { "all" },
     onchange = function()
       selectedSlotFilter = dlg.data.slotFilter or "all"
@@ -1017,7 +1116,7 @@ function panel.open()
   }
   dlg:button{
     id = "btnSoloSlot",
-    text = "Solo Slot",
+    text = "Solo Set",
     onclick = function()
       runAction(function()
         local slotName = selectedSlotName()
@@ -1025,14 +1124,14 @@ function panel.open()
         if schema and slotName ~= "all" then
           blueprint.setSlotVisibility(app.activeSprite, schema, slotName, "solo")
         else
-          app.alert("Choose a slot first.")
+          app.alert("Choose a layer set first.")
         end
       end)
     end
   }
   dlg:button{
     id = "btnHideSlot",
-    text = "Hide Slot",
+    text = "Hide Set",
     onclick = function()
       runAction(function()
         local slotName = selectedSlotName()
@@ -1040,7 +1139,7 @@ function panel.open()
         if schema and slotName ~= "all" then
           blueprint.setSlotVisibility(app.activeSprite, schema, slotName, "hide")
         else
-          app.alert("Choose a slot first.")
+          app.alert("Choose a layer set first.")
         end
       end)
     end
