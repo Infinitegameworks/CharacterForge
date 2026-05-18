@@ -120,6 +120,7 @@ local function updateLabels()
   local hasBlueprint = lastData ~= nil and not blueprintMissing
   dlg:modify{ id = "btnGoToBlueprint", visible = viewingAnimation == true, enabled = hasBlueprint }
   dlg:modify{ id = "btnRefreshSchema", visible = viewingAnimation == true, enabled = hasBlueprint }
+  dlg:modify{ id = "btnEditAnimation", visible = viewingAnimation == true }
 
   dlg:modify{ id = "btnCreateBlueprint", visible = viewingUnregistered == true or not spr }
   dlg:modify{ id = "btnFromCurrent", visible = viewingUnregistered == true }
@@ -326,11 +327,15 @@ local function drawBlueprintProgressView(gc, schema)
     local dotColor
     local fileExists = bpDir and anim.file and anim.file ~= "" and app.fs.isFile(app.fs.joinPath(bpDir, anim.file))
     if fileExists and anim.status == "valid" then
-      label = "complete"
+      local dc = anim.done_count or 0
+      local tc = anim.total_count or 0
+      label = tc > 0 and (tostring(dc) .. "/" .. tostring(tc) .. " done") or "complete"
       dotColor = utils.COLOR_PASS
     elseif fileExists then
-      label = "started"
-      dotColor = utils.COLOR_WARN
+      local dc = anim.done_count or 0
+      local tc = anim.total_count or 0
+      label = tc > 0 and (tostring(dc) .. "/" .. tostring(tc) .. " done") or "started"
+      dotColor = tc > 0 and dc > 0 and utils.COLOR_WARN or utils.COLOR_UNKNOWN
     else
       label = "not created"
       dotColor = utils.COLOR_UNKNOWN
@@ -1130,6 +1135,15 @@ function panel.open()
         isRefreshingCache = false
         app.alert("Error: " .. tostring(err))
       end
+    end
+  }
+  dlg:button{
+    id = "btnEditAnimation",
+    text = "Edit Animation",
+    onclick = function()
+      runAction(function()
+        if _blueprintEditorModule then _blueprintEditorModule.showEditAnimationDialog() end
+      end)
     end
   }
 

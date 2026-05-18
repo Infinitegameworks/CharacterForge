@@ -201,6 +201,8 @@ function blueprint.normalizeSchema(schema)
       file = anim.file or "",
       status = anim.status or "missing",
       last_result = anim.last_result or "",
+      done_count = anim.done_count or 0,
+      total_count = anim.total_count or 0,
     }
   end
 
@@ -264,6 +266,8 @@ local function writeAnimationsToProperties(animations)
       file = anim.file or "",
       status = anim.status or "missing",
       last_result = anim.last_result or "",
+      done_count = anim.done_count or 0,
+      total_count = anim.total_count or 0,
     }
   end
   return out
@@ -1426,26 +1430,35 @@ function blueprint.toggleActiveVariantAbsent()
 end
 
 function blueprint.checkAllVariantsDone(sprite)
-  if not sprite then return false end
+  if not sprite then return false, 0, 0 end
   local data = blueprint.readAnimationData(sprite)
-  if not data or not data.cached_schema then return false end
+  if not data or not data.cached_schema then return false, 0, 0 end
   local normalized = blueprint.normalizeSchema(data.cached_schema)
 
+  local total = 0
+  local done = 0
   for _, part in ipairs(normalized.body_parts or {}) do
     local partLayer = blueprint.findLayerByIdOrName(sprite.layers, "part", part.id, part.name)
-    if not partLayer then return false end
+    if not partLayer then goto nextPart end
     for _, slot in ipairs(part.slots or {}) do
       for _, variant in ipairs(slot.variants or {}) do
         local vl = blueprint.findVariantLayer(partLayer, slot, variant)
-        if not vl then return false end
-        local props = vl.properties(PK)
-        local absent = props and props.intentionally_absent
-        local done = props and props.marked_done
-        if not absent and not done then return false end
+        if vl then
+          local props = vl.properties(PK)
+          if props and props.intentionally_absent then
+            -- skip
+          else
+            total = total + 1
+            if props and props.marked_done then done = done + 1 end
+          end
+        else
+          total = total + 1
+        end
       end
     end
+    ::nextPart::
   end
-  return true
+  return done == total and total > 0, done, total
 end
 
 function blueprint.syncCompletionToBlueprint(animSprite, bpSprite)
@@ -1453,7 +1466,7 @@ function blueprint.syncCompletionToBlueprint(animSprite, bpSprite)
   local data = blueprint.readAnimationData(animSprite)
   if not data or not data.animation_name or data.animation_name == "" then return false end
 
-  local allDone = blueprint.checkAllVariantsDone(animSprite)
+  local allDone, doneCount, totalCount = blueprint.checkAllVariantsDone(animSprite)
   local schema = blueprint.readBlueprintSchema(bpSprite)
   if not schema then return false end
 
@@ -1461,8 +1474,10 @@ function blueprint.syncCompletionToBlueprint(animSprite, bpSprite)
   for i, anim in ipairs(schema.animations or {}) do
     if anim.name == data.animation_name then
       local newStatus = allDone and "valid" or "started"
-      if anim.status ~= newStatus then
+      if anim.status ~= newStatus or anim.done_count ~= doneCount or anim.total_count ~= totalCount then
         schema.animations[i].status = newStatus
+        schema.animations[i].done_count = doneCount
+        schema.animations[i].total_count = totalCount
         changed = true
       end
       break

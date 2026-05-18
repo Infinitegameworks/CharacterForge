@@ -554,4 +554,205 @@ function blueprintEditor._editAnimations(spr)
   end
 end
 
+-- ─── Edit Animation (modifies cached schema) ───────────
+
+function blueprintEditor.showEditAnimationDialog()
+  local spr = app.activeSprite
+  if not spr or not blueprint.isAnimation(spr) then
+    app.alert("Open a CharacterForge animation first.")
+    return
+  end
+
+  local data = blueprint.readAnimationData(spr)
+  if not data or not data.cached_schema then
+    app.alert("No cached schema. Use Link Animation first.")
+    return
+  end
+
+  local animPath = spr.filename
+  local bpRef = data.blueprint_ref or ""
+  local bpPath = data.blueprint_path or ""
+  if animPath and animPath ~= "" and bpRef ~= "" then
+    local dir = app.fs.filePath(animPath)
+    if dir and dir ~= "" then
+      local candidate = app.fs.joinPath(dir, bpRef)
+      if app.fs.isFile(candidate) then bpPath = candidate end
+    end
+  end
+  local hasBlueprintFile = bpPath ~= "" and app.fs.isFile(bpPath)
+
+  local charName = data.character_name or "animation"
+  local animName = data.animation_name or ""
+
+  local dlg = Dialog{ title = "Edit Animation: " .. charName .. " / " .. animName }
+  dlg:button{ id = "editOutfits", text = "Edit Outfits / Effects", onclick = function() dlg:close() end }
+  dlg:button{ id = "editParts", text = "Edit Parts", onclick = function() dlg:close() end }
+  if hasBlueprintFile then
+    dlg:check{ id = "applyToBlueprint", label = "Apply to blueprint too", selected = false }
+  end
+  dlg:button{ id = "cancel", text = "Close" }
+  dlg:show()
+
+  local applyToBp = hasBlueprintFile and dlg.data.applyToBlueprint
+
+  if dlg.data.editOutfits then
+    blueprintEditor._editAnimOutfits(spr, data, applyToBp, bpPath)
+  elseif dlg.data.editParts then
+    blueprintEditor._editAnimParts(spr, data, applyToBp, bpPath)
+  end
+end
+
+local function applyAnimSchema(animSprite, data, schema, applyToBp, bpPath)
+  local normalized = blueprint.normalizeSchema(schema)
+  app.transaction(function()
+    blueprint.cacheSchemaInAnimation(animSprite, normalized)
+    blueprint.ensureLayerStructure(animSprite, normalized, { rename = false })
+  end)
+
+  if applyToBp and bpPath and bpPath ~= "" and app.fs.isFile(bpPath) then
+    local animPath = animSprite.filename
+    pcall(function()
+      app.open(bpPath)
+      local bpSpr = app.activeSprite
+      if bpSpr and blueprint.isBlueprint(bpSpr) then
+        local bpSchema = blueprint.readBlueprintSchema(bpSpr)
+        if bpSchema then
+          bpSchema.body_parts = normalized.body_parts
+          bpSchema.variants = normalized.variants
+          applyBlueprintSchema(bpSpr, bpSchema)
+        end
+      end
+      if animPath and animPath ~= "" then app.open(animPath) end
+    end)
+  end
+
+  return blueprint.readAnimationData(animSprite)
+end
+
+function blueprintEditor._editAnimOutfits(animSprite, data, applyToBp, bpPath)
+  local schema = data.cached_schema
+  local selectedPartName = nil
+
+  while true do
+    local partNames = {}
+    for _, part in ipairs(schema.body_parts or {}) do partNames[#partNames + 1] = part.name end
+    if not selectedPartName or not findNamedItem(schema.body_parts, selectedPartName) then
+      selectedPartName = partNames[1] or ""
+    end
+
+    local part = findNamedItem(schema.body_parts, selectedPartName)
+    local outfits = part and partVariantNames(part, "variant") or {}
+    local effects = part and partVariantNames(part, "state") or {}
+    local removeOpts = part and partVariantNames(part) or {}
+
+    local title = "Outfits: " .. selectedPartName
+    if part then title = title .. " — " .. partSummary(part) end
+    local dlg = Dialog{ title = title }
+
+    dlg:combobox{ id = "partSelect", label = "Part:", option = selectedPartName, options = partNames }
+    dlg:button{ id = "switchPart", text = "Switch Part", onclick = function()
+      selectedPartName = dlg.data.partSelect or selectedPartName; dlg:close()
+    end }
+
+    dlg:separator{ text = "Outfits: " .. (#outfits > 0 and table.concat(outfits, ", ") or "(none)") }
+    dlg:label{ text = "Effects: " .. (#effects > 0 and table.concat(effects, ", ") or "(none)") }
+
+    dlg:entry{ id = "addNames", label = "Add:", text = "" }
+    dlg:combobox{ id = "addKind", label = "Kind:", options = { "outfit", "effect" } }
+    dlg:button{ id = "addBtn", text = "Add to " .. selectedPartName, onclick = function() dlg:close() end }
+
+    if #removeOpts > 0 then
+      dlg:combobox{ id = "removeChoice", label = "Remove:", options = removeOpts }
+      dlg:button{ id = "removeBtn", text = "Remove from " .. selectedPartName, onclick = function() dlg:close() end }
+    end
+
+    dlg:separator()
+    dlg:button{ id = "back", text = "Back" }
+    dlg:show()
+
+    if dlg.data.addBtn then
+      if part then
+        local kind = (dlg.data.addKind or "outfit") == "effect" and "state" or "variant"
+        for _, name in ipairs(parseList(dlg.data.addNames, "")) do
+          if name ~= "base" then
+            for _, slot in ipairs(part.slots or {}) do
+              if not hasNamedItem(slot.variants, name) then
+                slot.variants[#slot.variants + 1] = { name = name, type = kind, required = false }
+              end
+            end
+          end
+        end
+        data = applyAnimSchema(animSprite, data, schema, applyToBp, bpPath)
+        schema = data.cached_schema
+      end
+    elseif dlg.data.removeBtn then
+      if part then
+        local name = dlg.data.removeChoice
+        if name and name ~= "" then
+          for _, slot in ipairs(part.slots or {}) do removeNamedItem(slot.variants, name) end
+          data = applyAnimSchema(animSprite, data, schema, applyToBp, bpPath)
+          schema = data.cached_schema
+        end
+      end
+    elseif dlg.data.switchPart then
+      -- loop rebuilds
+    else
+      blueprintEditor.showEditAnimationDialog()
+      return
+    end
+  end
+end
+
+function blueprintEditor._editAnimParts(animSprite, data, applyToBp, bpPath)
+  while true do
+    local schema = data.cached_schema
+    local partNames = {}
+    for _, part in ipairs(schema.body_parts or {}) do
+      partNames[#partNames + 1] = part.name .. " — " .. partSummary(part)
+    end
+    local partNameList = {}
+    for _, part in ipairs(schema.body_parts or {}) do partNameList[#partNameList + 1] = part.name end
+
+    local dlg = Dialog{ title = "Edit Parts (" .. #partNameList .. ")" }
+    if #partNames > 0 then dlg:label{ text = table.concat(partNames, "\n") } end
+
+    dlg:separator{ text = "Add" }
+    dlg:entry{ id = "newParts", label = "Names:", text = "" }
+    dlg:button{ id = "addBtn", text = "Add Part(s)", onclick = function() dlg:close() end }
+
+    if #partNameList > 0 then
+      dlg:separator{ text = "Remove" }
+      dlg:combobox{ id = "removePart", label = "Part:", options = partNameList }
+      dlg:button{ id = "removeBtn", text = "Remove Part", onclick = function() dlg:close() end }
+    end
+
+    dlg:separator()
+    dlg:button{ id = "back", text = "Back" }
+    dlg:show()
+
+    if dlg.data.addBtn then
+      for _, name in ipairs(parseList(dlg.data.newParts, "")) do
+        if not hasNamedItem(schema.body_parts, name) then
+          schema.body_parts[#schema.body_parts + 1] = {
+            name = name, sort_order = #schema.body_parts + 1,
+            slots = { defaultSlot() },
+          }
+        end
+      end
+      data = applyAnimSchema(animSprite, data, schema, applyToBp, bpPath)
+    elseif dlg.data.removeBtn then
+      local name = dlg.data.removePart
+      if name and name ~= "" then
+        if app.alert{ title = "Remove", text = "Remove '" .. name .. "'?", buttons = { "Remove", "Cancel" } } == 1 then
+          removeNamedItem(schema.body_parts, name)
+          data = applyAnimSchema(animSprite, data, schema, applyToBp, bpPath)
+        end
+      end
+    else
+      blueprintEditor.showEditAnimationDialog()
+      return
+    end
+  end
+end
+
 return blueprintEditor
