@@ -29,6 +29,12 @@ local previewStartY = 68
 local scrollOffset = 0
 local contentHeight = 0
 local isDraggingScrollbar = false
+local collapsedGroups = {}
+local isDraggingAnim = false
+local dragAnimKey = nil
+local dragStartY = 0
+local dragMouseY = 0
+local groupHeaderRects = {}
 local hoverAnimRowKey = nil
 local hoverVariantRowKey = nil
 
@@ -157,6 +163,8 @@ local function refreshPanel()
     scrollOffset = 0
     hoverAnimRowKey = nil
     hoverVariantRowKey = nil
+    isDraggingAnim = false
+    dragAnimKey = nil
   end
   currentSprite = spr
   lastValidation = nil
@@ -312,8 +320,53 @@ local function variantRowKey(partId, slotId, variantId)
   return tostring(partId or "") .. "/" .. tostring(slotId or "") .. "/" .. tostring(variantId or "")
 end
 
+local GROUP_HEADER_COLOR = Color{ r = 58, g = 58, b = 58, a = 255 }
+local GROUP_ARROW_EXPANDED = "v "
+local GROUP_ARROW_COLLAPSED = "> "
+
+local function animStatus(anim, bpDir)
+  local fileExists = bpDir and anim.file and anim.file ~= "" and findAnimFile(bpDir, anim.file)
+  local label, dotColor
+  if fileExists and anim.status == "valid" then
+    local dc = anim.done_count or 0
+    local tc = anim.total_count or 0
+    label = tc > 0 and (tostring(dc) .. "/" .. tostring(tc) .. " done") or "complete"
+    dotColor = utils.COLOR_PASS
+  elseif fileExists then
+    local dc = anim.done_count or 0
+    local tc = anim.total_count or 0
+    label = tc > 0 and (tostring(dc) .. "/" .. tostring(tc) .. " done") or "started"
+    dotColor = tc > 0 and dc > 0 and utils.COLOR_WARN or utils.COLOR_UNKNOWN
+  else
+    label = "not created"
+    dotColor = utils.COLOR_UNKNOWN
+  end
+  return label, dotColor, fileExists
+end
+
+local function buildGroupedAnims(anims)
+  local groupOrder = {}
+  local groupMap = {}
+  local ungrouped = {}
+
+  for _, anim in ipairs(anims) do
+    local g = anim.group or ""
+    if g ~= "" then
+      if not groupMap[g] then
+        groupMap[g] = {}
+        groupOrder[#groupOrder + 1] = g
+      end
+      groupMap[g][#groupMap[g] + 1] = anim
+    else
+      ungrouped[#ungrouped + 1] = anim
+    end
+  end
+  return groupOrder, groupMap, ungrouped
+end
+
 local function drawBlueprintProgressView(gc, schema)
   animRowRects = {}
+  groupHeaderRects = {}
   if not schema then return end
   local anims = schema.animations or {}
   if #anims == 0 then
@@ -330,8 +383,8 @@ local function drawBlueprintProgressView(gc, schema)
   local started = 0
   local complete = 0
   for _, anim in ipairs(anims) do
-    local fileOnDisk = bpDir and anim.file and anim.file ~= "" and findAnimFile(bpDir, anim.file)
-    if fileOnDisk then
+    local _, _, fe = animStatus(anim, bpDir)
+    if fe then
       started = started + 1
       if anim.status == "valid" then complete = complete + 1 end
     end
@@ -340,57 +393,81 @@ local function drawBlueprintProgressView(gc, schema)
   local y = previewStartY
   local sy = y - scrollOffset
   if sy >= previewStartY and sy < LIST_BOTTOM then
-    drawText(gc, tostring(started) .. "/" .. tostring(#anims) .. " animations started, " .. tostring(complete) .. " complete", 8, sy, utils.COLOR_TEXT)
+    drawText(gc, tostring(started) .. "/" .. tostring(#anims) .. " started, " .. tostring(complete) .. " complete", 8, sy, utils.COLOR_TEXT)
   end
   y = y + 18
 
-  for i, anim in ipairs(anims) do
-    local label
-    local dotColor
-    local fileExists = bpDir and anim.file and anim.file ~= "" and app.fs.isFile(app.fs.joinPath(bpDir, anim.file))
-    if fileExists and anim.status == "valid" then
-      local dc = anim.done_count or 0
-      local tc = anim.total_count or 0
-      label = tc > 0 and (tostring(dc) .. "/" .. tostring(tc) .. " done") or "complete"
-      dotColor = utils.COLOR_PASS
-    elseif fileExists then
-      local dc = anim.done_count or 0
-      local tc = anim.total_count or 0
-      label = tc > 0 and (tostring(dc) .. "/" .. tostring(tc) .. " done") or "started"
-      dotColor = tc > 0 and dc > 0 and utils.COLOR_WARN or utils.COLOR_UNKNOWN
-    else
-      label = "not created"
-      dotColor = utils.COLOR_UNKNOWN
-    end
+  local groupOrder, groupMap, ungrouped = buildGroupedAnims(anims)
+  local rowIdx = 0
 
+  local function drawAnimRow(anim, indent)
+    local label, dotColor, fileExists = animStatus(anim, bpDir)
     sy = y - scrollOffset
     if sy >= previewStartY - 4 and sy < LIST_BOTTOM then
-      local row = i - 1
       local rowKey = animRowKey(anim)
       local hovered = hoverAnimRowKey == rowKey
-      if hovered then
-        fillRect(gc, 8, sy - 2, 324, 14, Color{ r = 64, g = 64, b = 64, a = 255 })
-      elseif row % 2 == 0 then
-        fillRect(gc, 8, sy - 2, 324, 14, Color{ r = 46, g = 46, b = 46, a = 255 })
+      local dragging = isDraggingAnim and dragAnimKey == rowKey
+      if dragging then
+        fillRect(gc, indent, sy - 2, 324 - indent + 8, 14, Color{ r = 80, g = 80, b = 60, a = 255 })
+      elseif hovered then
+        fillRect(gc, indent, sy - 2, 324 - indent + 8, 14, Color{ r = 64, g = 64, b = 64, a = 255 })
+      elseif rowIdx % 2 == 0 then
+        fillRect(gc, indent, sy - 2, 324 - indent + 8, 14, Color{ r = 46, g = 46, b = 46, a = 255 })
       end
-      drawProgressDot(gc, 12, sy + 1, dotColor)
+      drawProgressDot(gc, indent + 4, sy + 1, dotColor)
       local displayName = anim.name or "unnamed"
       if anim.direction and anim.direction ~= "" then
         displayName = displayName .. " [" .. anim.direction .. "]"
       end
-      drawText(gc, displayName .. ": " .. label, 28, sy, utils.COLOR_TEXT)
+      drawText(gc, displayName .. ": " .. label, indent + 20, sy, utils.COLOR_TEXT)
       drawText(gc, fileExists and "open" or "create", 286, sy, hovered and utils.COLOR_TEXT or utils.COLOR_MUTED)
       animRowRects[#animRowRects + 1] = {
         key = rowKey,
         name = anim.name or "",
         direction = anim.direction or "",
+        group = anim.group or "",
         file = anim.file or "",
         fileExists = fileExists,
-        x = 8, y = sy - 2, w = 324, h = 16,
+        x = indent, y = sy - 2, w = 324 - indent + 8, h = 16,
+      }
+    end
+    rowIdx = rowIdx + 1
+    y = y + 16
+  end
+
+  for _, groupName in ipairs(groupOrder) do
+    local groupAnims = groupMap[groupName]
+    local collapsed = collapsedGroups[groupName]
+    local gDone = 0
+    local gTotal = #groupAnims
+    for _, a in ipairs(groupAnims) do
+      local _, _, fe = animStatus(a, bpDir)
+      if fe and a.status == "valid" then gDone = gDone + 1 end
+    end
+
+    sy = y - scrollOffset
+    if sy >= previewStartY - 4 and sy < LIST_BOTTOM then
+      local dropTarget = isDraggingAnim and dragAnimKey and true or false
+      fillRect(gc, 8, sy - 2, 324, 14, dropTarget and Color{ r = 50, g = 58, b = 50, a = 255 } or GROUP_HEADER_COLOR)
+      local arrow = collapsed and GROUP_ARROW_COLLAPSED or GROUP_ARROW_EXPANDED
+      drawText(gc, arrow .. groupName .. " (" .. gDone .. "/" .. gTotal .. ")", 12, sy, utils.COLOR_TEXT)
+      groupHeaderRects[#groupHeaderRects + 1] = {
+        name = groupName, x = 8, y = sy - 2, w = 324, h = 16,
       }
     end
     y = y + 16
+
+    if not collapsed then
+      for _, anim in ipairs(groupAnims) do
+        drawAnimRow(anim, 20)
+      end
+    end
   end
+
+  for _, anim in ipairs(ungrouped) do
+    drawAnimRow(anim, 8)
+  end
+
   contentHeight = y - previewStartY
 end
 
@@ -895,9 +972,19 @@ local function onCanvasMouseDown(ev)
         return
       end
     end
+    for _, rect in ipairs(groupHeaderRects or {}) do
+      if x >= rect.x and x <= rect.x + rect.w and y >= rect.y and y <= rect.y + rect.h then
+        collapsedGroups[rect.name] = not collapsedGroups[rect.name]
+        if dlg then dlg:repaint() end
+        return
+      end
+    end
     for _, rect in ipairs(animRowRects or {}) do
       if x >= rect.x and x <= rect.x + rect.w and y >= rect.y and y <= rect.y + rect.h then
-        onAnimRowClick(rect)
+        isDraggingAnim = true
+        dragAnimKey = rect.key
+        dragStartY = y
+        dragMouseY = y
         return
       end
     end
@@ -1053,11 +1140,61 @@ function panel.open()
     onmousemove = function(ev)
       if isDraggingScrollbar then
         scrollbarHitAndDrag(ev.y or 0)
+      elseif isDraggingAnim then
+        dragMouseY = ev.y or 0
+        if dlg then dlg:repaint() end
       else
         hitTestRows(ev.x or 0, ev.y or 0)
       end
     end,
     onmouseup = function(ev)
+      if isDraggingAnim and dragAnimKey then
+        local dropY = ev.y or 0
+        local dragDistance = math.abs(dropY - dragStartY)
+
+        if dragDistance < 4 then
+          for _, rect in ipairs(animRowRects or {}) do
+            if rect.key == dragAnimKey then
+              isDraggingAnim = false
+              dragAnimKey = nil
+              onAnimRowClick(rect)
+              return
+            end
+          end
+        end
+
+        local droppedOnGroup = nil
+        for _, rect in ipairs(groupHeaderRects or {}) do
+          if dropY >= rect.y and dropY <= rect.y + rect.h then
+            droppedOnGroup = rect.name
+            break
+          end
+        end
+        local movedToUngrouped = not droppedOnGroup and dropY >= previewStartY
+
+        if droppedOnGroup or movedToUngrouped then
+          local spr = app.activeSprite
+          if spr and blueprint.isBlueprint(spr) then
+            local schema = blueprint.readBlueprintSchema(spr)
+            if schema then
+              for _, anim in ipairs(schema.animations or {}) do
+                if animRowKey(anim) == dragAnimKey then
+                  anim.group = droppedOnGroup or ""
+                  break
+                end
+              end
+              schema = blueprint.normalizeSchema(schema)
+              app.transaction(function()
+                blueprint.writeBlueprintSchema(spr, schema)
+              end)
+              refreshPanel()
+            end
+          end
+        end
+        isDraggingAnim = false
+        dragAnimKey = nil
+        if dlg then dlg:repaint() end
+      end
       isDraggingScrollbar = false
     end,
     onwheel = function(ev)

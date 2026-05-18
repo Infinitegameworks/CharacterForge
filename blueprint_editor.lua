@@ -435,12 +435,12 @@ function blueprintEditor._finishCreate(charName, bodyParts, animText, saveDir, d
   if #directions > 0 then
     for _, animName in ipairs(animNames) do
       for _, dir in ipairs(directions) do
-        animations[#animations + 1] = { name = animName, direction = dir, file = "", status = "missing" }
+        animations[#animations + 1] = { name = animName, direction = dir, group = animName, file = "", status = "missing" }
       end
     end
   else
     for _, animName in ipairs(animNames) do
-      animations[#animations + 1] = { name = animName, direction = "", file = "", status = "missing" }
+      animations[#animations + 1] = { name = animName, direction = "", group = "", file = "", status = "missing" }
     end
   end
 
@@ -722,10 +722,17 @@ function blueprintEditor._editAnimations(spr)
     local schema = blueprint.readBlueprintSchema(spr)
     local animNames = {}
     local animLabels = {}
+    local groupNames = {}
+    local groupSeen = {}
     for _, anim in ipairs(schema.animations or {}) do
-      animNames[#animNames + 1] = anim.name
-      local status = anim.status or "missing"
-      animLabels[#animLabels + 1] = anim.name .. " [" .. status .. "]"
+      local dir = (anim.direction and anim.direction ~= "") and (" [" .. anim.direction .. "]") or ""
+      local grp = (anim.group and anim.group ~= "") and (" {" .. anim.group .. "}") or ""
+      animNames[#animNames + 1] = anim.name .. dir
+      animLabels[#animLabels + 1] = anim.name .. dir .. grp .. " [" .. (anim.status or "missing") .. "]"
+      if anim.group and anim.group ~= "" and not groupSeen[anim.group] then
+        groupNames[#groupNames + 1] = anim.group
+        groupSeen[anim.group] = true
+      end
     end
 
     local dlg = Dialog{ title = "Edit Animations (" .. #animNames .. ")" }
@@ -744,6 +751,14 @@ function blueprintEditor._editAnimations(spr)
       dlg:separator{ text = "Remove" }
       dlg:combobox{ id = "removeAnim", label = "Animation:", options = animNames }
       dlg:button{ id = "removeBtn", text = "Remove Animation", onclick = function() dlg:close() end }
+
+      dlg:separator{ text = "Groups" }
+      dlg:combobox{ id = "groupAnim", label = "Animation:", options = animNames }
+      local groupOpts = { "(ungrouped)" }
+      for _, g in ipairs(groupNames) do groupOpts[#groupOpts + 1] = g end
+      dlg:combobox{ id = "groupTarget", label = "Move to:", options = groupOpts }
+      dlg:entry{ id = "newGroupName", label = "Or new group:", text = "" }
+      dlg:button{ id = "groupBtn", text = "Set Group", onclick = function() dlg:close() end }
     end
 
     dlg:separator()
@@ -774,6 +789,22 @@ function blueprintEditor._editAnimations(spr)
           removeNamedItem(schema.animations, name)
           applyBlueprintSchema(spr, schema)
         end
+      end
+    elseif dlg.data.groupBtn then
+      local animLabel = dlg.data.groupAnim
+      local targetGroup = dlg.data.groupTarget or ""
+      local newGroup = trim(dlg.data.newGroupName)
+      if newGroup ~= "" then targetGroup = newGroup end
+      if targetGroup == "(ungrouped)" then targetGroup = "" end
+      if animLabel then
+        for _, anim in ipairs(schema.animations or {}) do
+          local dir = (anim.direction and anim.direction ~= "") and (" [" .. anim.direction .. "]") or ""
+          if anim.name .. dir == animLabel then
+            anim.group = targetGroup
+            break
+          end
+        end
+        applyBlueprintSchema(spr, schema)
       end
     else
       blueprintEditor.showEditDialog()

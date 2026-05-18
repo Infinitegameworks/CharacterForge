@@ -201,6 +201,7 @@ function blueprint.normalizeSchema(schema)
     animations[i] = {
       name = anim.name or "",
       direction = anim.direction or "",
+      group = anim.group or "",
       file = anim.file or "",
       status = anim.status or "missing",
       last_result = anim.last_result or "",
@@ -268,6 +269,7 @@ local function writeAnimationsToProperties(animations)
     out[i] = {
       name = anim.name or "",
       direction = anim.direction or "",
+      group = anim.group or "",
       file = anim.file or "",
       status = anim.status or "missing",
       last_result = anim.last_result or "",
