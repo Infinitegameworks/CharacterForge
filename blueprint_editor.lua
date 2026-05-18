@@ -40,6 +40,23 @@ local function removeNamedItem(list, name)
   return false
 end
 
+local function hasString(list, value)
+  for _, item in ipairs(list or {}) do
+    if item == value then return true end
+  end
+  return false
+end
+
+local function removeString(list, value)
+  for i = #list, 1, -1 do
+    if list[i] == value then
+      table.remove(list, i)
+      return true
+    end
+  end
+  return false
+end
+
 local function findNamedItem(list, name)
   for _, item in ipairs(list or {}) do
     if item.name == name then return item end
@@ -130,57 +147,136 @@ local TEMPLATE_ANIMATIONS = "idle, walk, run"
 -- ─── Create: Step 1 ────────────────────────────────────
 
 function blueprintEditor.showCreateDialog()
-  local dlg = Dialog{ title = "Create Character — Step 1: Structure" }
+  local charName = ""
+  local parts = parseList(TEMPLATE_PARTS[TEMPLATE_OPTIONS[1]], "")
+  local outfits = {}
+  local effects = {}
+  local anims = parseList(TEMPLATE_ANIMATIONS, "")
+  local saveDir = ""
 
-  dlg:combobox{
-    id = "template", label = "Template:", options = TEMPLATE_OPTIONS,
-    onchange = function()
-      local selected = dlg.data.template or "Custom"
-      dlg:modify{ id = "bodyParts", text = TEMPLATE_PARTS[selected] or "" }
-      dlg:modify{ id = "animations", text = selected ~= "Custom" and TEMPLATE_ANIMATIONS or "" }
-    end,
-  }
-  dlg:entry{ id = "characterName", label = "Character:", text = "" }
-  dlg:entry{ id = "bodyParts", label = "Parts:", text = TEMPLATE_PARTS[TEMPLATE_OPTIONS[1]] }
-  dlg:entry{ id = "defaultOutfits", label = "Default Outfits:", text = "" }
-  dlg:entry{ id = "defaultEffects", label = "Default Effects:", text = "" }
-  dlg:entry{ id = "animations", label = "Animations:", text = TEMPLATE_ANIMATIONS }
-  dlg:file{ id = "saveDir", label = "Save In:", filename = "", open = false, save = false, filetypes = {} }
-  dlg:button{ id = "next", text = "Next: Per-Part Setup" }
-  dlg:button{ id = "createNow", text = "Create With Defaults" }
-  dlg:button{ id = "cancel", text = "Cancel" }
-  dlg:show()
+  while true do
+    local dlg = Dialog{ title = "Create Character" }
 
-  if dlg.data.cancel or (not dlg.data.next and not dlg.data.createNow) then return end
-
-  local charName = trim(dlg.data.characterName)
-  if charName == "" then app.alert("Character name is required."); return end
-
-  local partNameList = parseList(dlg.data.bodyParts, "")
-  if #partNameList == 0 then app.alert("At least one body part is required."); return end
-
-  local defaultOutfits = parseList(dlg.data.defaultOutfits, "")
-  local defaultEffects = parseList(dlg.data.defaultEffects, "")
-
-  local bodyParts = {}
-  for _, partName in ipairs(partNameList) do
-    local variants = {{ id = "variant_base", name = "base", type = "variant", required = true }}
-    for _, name in ipairs(defaultOutfits) do
-      variants[#variants + 1] = { name = name, type = "variant", required = false }
-    end
-    for _, name in ipairs(defaultEffects) do
-      variants[#variants + 1] = { name = name, type = "state", required = false }
-    end
-    bodyParts[#bodyParts + 1] = {
-      name = partName, sort_order = #bodyParts + 1,
-      slots = { defaultSlot(variants) },
+    dlg:combobox{
+      id = "template", label = "Template:", options = TEMPLATE_OPTIONS,
+      onchange = function()
+        local selected = dlg.data.template or "Custom"
+        if TEMPLATE_PARTS[selected] then
+          parts = parseList(TEMPLATE_PARTS[selected], "")
+          anims = selected ~= "Custom" and parseList(TEMPLATE_ANIMATIONS, "") or anims
+          dlg:close()
+        end
+      end,
     }
-  end
+    dlg:entry{ id = "characterName", label = "Character:", text = charName }
 
-  if dlg.data.next then
-    blueprintEditor._showStep2(charName, bodyParts, dlg.data.animations, dlg.data.saveDir)
-  else
-    blueprintEditor._finishCreate(charName, bodyParts, dlg.data.animations, dlg.data.saveDir)
+    dlg:separator{ text = "Parts (" .. #parts .. ")" }
+    if #parts > 0 then dlg:label{ text = table.concat(parts, ", ") } end
+    dlg:entry{ id = "addPart", label = "Name:", text = "" }
+    dlg:button{ id = "addPartBtn", text = "Add Part", onclick = function() dlg:close() end }
+    if #parts > 0 then
+      dlg:combobox{ id = "removePart", label = "Remove:", options = parts }
+      dlg:button{ id = "removePartBtn", text = "Remove Part", onclick = function() dlg:close() end }
+    end
+
+    dlg:separator{ text = "Default Outfits (" .. #outfits .. ")" }
+    if #outfits > 0 then dlg:label{ text = table.concat(outfits, ", ") } end
+    dlg:entry{ id = "addOutfit", label = "Name:", text = "" }
+    dlg:button{ id = "addOutfitBtn", text = "Add Outfit", onclick = function() dlg:close() end }
+    if #outfits > 0 then
+      dlg:combobox{ id = "removeOutfit", label = "Remove:", options = outfits }
+      dlg:button{ id = "removeOutfitBtn", text = "Remove Outfit", onclick = function() dlg:close() end }
+    end
+
+    dlg:separator{ text = "Default Effects (" .. #effects .. ")" }
+    if #effects > 0 then dlg:label{ text = table.concat(effects, ", ") } end
+    dlg:entry{ id = "addEffect", label = "Name:", text = "" }
+    dlg:button{ id = "addEffectBtn", text = "Add Effect", onclick = function() dlg:close() end }
+    if #effects > 0 then
+      dlg:combobox{ id = "removeEffect", label = "Remove:", options = effects }
+      dlg:button{ id = "removeEffectBtn", text = "Remove Effect", onclick = function() dlg:close() end }
+    end
+
+    dlg:separator{ text = "Animations (" .. #anims .. ")" }
+    if #anims > 0 then dlg:label{ text = table.concat(anims, ", ") } end
+    dlg:entry{ id = "addAnim", label = "Name:", text = "" }
+    dlg:button{ id = "addAnimBtn", text = "Add Animation", onclick = function() dlg:close() end }
+    if #anims > 0 then
+      dlg:combobox{ id = "removeAnim", label = "Remove:", options = anims }
+      dlg:button{ id = "removeAnimBtn", text = "Remove Animation", onclick = function() dlg:close() end }
+    end
+
+    dlg:separator()
+    dlg:file{ id = "saveDir", label = "Save In:", filename = saveDir, open = false, save = false, filetypes = {} }
+    dlg:button{ id = "next", text = "Next: Per-Part Setup" }
+    dlg:button{ id = "createNow", text = "Create With Defaults" }
+    dlg:button{ id = "cancel", text = "Cancel" }
+    dlg:show()
+
+    charName = trim(dlg.data.characterName or charName)
+    saveDir = dlg.data.saveDir or saveDir
+
+    if dlg.data.addPartBtn then
+      local name = trim(dlg.data.addPart)
+      if name ~= "" and not hasString(parts, name) then
+        parts[#parts + 1] = name
+      end
+    elseif dlg.data.removePartBtn then
+      local name = dlg.data.removePart
+      if name then removeString(parts, name) end
+    elseif dlg.data.addOutfitBtn then
+      local name = trim(dlg.data.addOutfit)
+      if name ~= "" and name ~= "base" and not hasString(outfits, name) then
+        outfits[#outfits + 1] = name
+      end
+    elseif dlg.data.removeOutfitBtn then
+      local name = dlg.data.removeOutfit
+      if name then removeString(outfits, name) end
+    elseif dlg.data.addEffectBtn then
+      local name = trim(dlg.data.addEffect)
+      if name ~= "" and name ~= "base" and not hasString(effects, name) then
+        effects[#effects + 1] = name
+      end
+    elseif dlg.data.removeEffectBtn then
+      local name = dlg.data.removeEffect
+      if name then removeString(effects, name) end
+    elseif dlg.data.addAnimBtn then
+      local name = trim(dlg.data.addAnim)
+      if name ~= "" and not hasString(anims, name) then
+        anims[#anims + 1] = name
+      end
+    elseif dlg.data.removeAnimBtn then
+      local name = dlg.data.removeAnim
+      if name then removeString(anims, name) end
+    elseif dlg.data.next or dlg.data.createNow then
+      if charName == "" then app.alert("Character name is required.")
+      elseif #parts == 0 then app.alert("At least one body part is required.")
+      else
+        local bodyParts = {}
+        for _, partName in ipairs(parts) do
+          local variants = {{ id = "variant_base", name = "base", type = "variant", required = true }}
+          for _, name in ipairs(outfits) do
+            variants[#variants + 1] = { name = name, type = "variant", required = false }
+          end
+          for _, name in ipairs(effects) do
+            variants[#variants + 1] = { name = name, type = "state", required = false }
+          end
+          bodyParts[#bodyParts + 1] = {
+            name = partName, sort_order = #bodyParts + 1,
+            slots = { defaultSlot(variants) },
+          }
+        end
+        local animText = table.concat(anims, ", ")
+        if dlg.data.next then
+          blueprintEditor._showStep2(charName, bodyParts, animText, saveDir)
+        else
+          blueprintEditor._finishCreate(charName, bodyParts, animText, saveDir)
+        end
+        return
+      end
+    else
+      return
+    end
   end
 end
 
