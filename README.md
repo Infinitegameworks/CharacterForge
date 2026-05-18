@@ -10,8 +10,9 @@ A **blueprint** is an `.ase` file that stores the character definition:
 - **Outfits** -- per-part visual alternatives (armor on torso, ponytail on hair, etc.)
 - **Effects** -- conditional overlays that apply to specific animations (damaged, powered-up)
 - **Animations** -- the list of animation files the character needs (idle, walk, run, etc.)
+- **Directions** (optional) -- facing directions (front, back, 4-dir, 8-dir). Each animation × direction becomes its own file.
 
-Outfits and effects are configured **per-part** -- hair can have unique hairstyle variants while torso has armor variants. A bulk-add option applies outfits across all parts when that makes sense.
+Outfits and effects are configured **per-part** -- hair can have unique hairstyle variants while torso has armor variants.
 
 ## Requirements
 
@@ -42,24 +43,29 @@ Commands register under **Sprite > Properties** in the menu bar.
 
 **Sprite > CharacterForge: New Blueprint** opens a two-step setup:
 
-- **Step 1**: Pick a template (Humanoid, Simple Humanoid, Upper Body, or Custom). Set character name, parts, default outfits/effects, and planned animations.
+- **Step 1**: Pick a template, set character name. Add parts, default outfits, effects, and animations one at a time using type-and-click controls. Optionally enable directions with presets (8-dir, 4-dir, front/back, custom).
 - **Step 2** (optional): Per-part customization. Select each part from a dropdown and add/remove outfits and effects specific to that part. "Create With Defaults" skips this step.
+
+When directions are enabled, each animation is expanded into one file per direction (e.g., `character_idle_front.ase`, `character_idle_back.ase`).
 
 ### 2. Open the Panel
 
-**Sprite > CharacterForge** opens the floating panel. The panel adapts to what you're viewing:
+**Sprite > CharacterForge** opens the floating panel. Buttons adapt to what you're viewing:
 
 **When viewing a blueprint:**
-- Animation progress list -- click any row to open an existing animation or create a missing one
-- Edit Blueprint button -- opens the hub editor
-- New Animation button -- manual creation dialog
+- Animation progress list with collapsible groups
+- Directional animations auto-group by base name (click group header to collapse/expand)
+- Click any animation row to open an existing file or create a missing one
+- Drag animation rows to group headers to reorganize
+- Per-animation progress: "5/12 done" with color-coded dots
+- Edit Blueprint, New Animation buttons
 
 **When viewing an animation:**
-- Variant checklist -- shows every part and variant with done/not-done status
-- Click any variant row to toggle it as done
-- Progress counter (e.g., "5/12 variants done")
-- Go to Blueprint button -- opens the linked blueprint
-- Refresh from Blueprint button -- re-caches the schema if the blueprint changed
+- Variant checklist showing every part and variant with auto-detected done status
+- Variants are "done" when their frame count matches the base variant -- no manual marking needed
+- Click any variant row to select that layer in the timeline for drawing
+- Edit Animation button -- modify the animation's parts/outfits with optional blueprint propagation
+- Go to Blueprint, Refresh from Blueprint buttons
 
 **When viewing an unregistered sprite:**
 - New Blueprint, Blueprint From Current, Link Animation buttons
@@ -67,46 +73,79 @@ Commands register under **Sprite > Properties** in the menu bar.
 ### 3. Draw and Track Progress
 
 As you draw each animation:
-- The panel shows per-part variant status with frame counts
-- Click variants to mark them done when you're satisfied with the art
-- When all non-skipped variants are done, the blueprint shows the animation as "complete"
-- Mouse wheel scrolls the panel when content overflows; scrollbar is draggable
+- The panel automatically detects completion by comparing frame counts to the base variant
+- When all non-skipped variants have matching frame counts, the animation shows as complete
+- Progress syncs to the blueprint when you switch tabs (no manual action needed)
+- Mouse wheel scrolls the panel; scrollbar is draggable
 
 ### 4. Edit the Blueprint
 
 **Edit Blueprint** opens a hub with focused action dialogs:
 
-- **Edit Parts** -- add/remove body parts, see current part summary
-- **Edit Outfits / Effects** -- select a part from a dropdown, add/remove outfits and effects for that specific part. Bulk-add option applies to all parts at once.
-- **Edit Animations** -- add/remove planned animations
+- **Edit Parts** -- add, rename, or remove body parts
+- **Edit Outfits / Effects** -- per-part dropdown to add, rename, or remove outfits and effects. Bulk-add applies to all parts at once.
+- **Edit Animations** -- add, rename, or remove animations. Assign animations to groups or create new groups.
 
 If the blueprint structure changes and animations already exist, a warning reminds you to refresh them.
 
+### 5. Edit an Animation
+
+**Edit Animation** (visible when viewing an animation) opens a hub to modify the animation's own schema:
+
+- Edit parts and outfits/effects scoped to this animation
+- "Apply to blueprint too" checkbox propagates changes to the blueprint file
+
+## Directions
+
+Directions are optional. When enabled in the create wizard, you choose from presets:
+
+| Preset | Directions |
+|---|---|
+| 8-Direction | front, front_right, right, back_right, back, back_left, left, front_left |
+| 4-Direction | front, right, back, left |
+| Front / Back | front, back |
+| Front Only | front |
+| Custom | pick individual directions |
+
+Each animation × direction becomes a separate file. In the blueprint panel, directional animations auto-group under their base name (e.g., "idle" group contains front, back, left, right). Dragging a directional animation warns before breaking it out of its direction group -- "Move All" keeps directions together, "Move This Only" breaks one out.
+
+## Animation Groups
+
+The blueprint progress view supports collapsible groups for organizing animations:
+
+- Directional animations auto-group by base animation name
+- Custom groups can be created via Edit Animations > Groups
+- Drag animation rows to group headers to reorganize
+- Click a group header to collapse/expand
+- Group headers show aggregate progress (done/total)
+
 ## Blueprint-Animation Coupling
 
-Animations store a reference to their blueprint (filename + absolute path fallback). The cached schema lets animations validate and display their checklist even when the blueprint isn't open.
+Animations store a reference to their blueprint (filename + absolute path fallback). Path resolution checks the same directory, parent directory, and the stored absolute path.
 
-If the blueprint is renamed or moved, the fallback path resolves the link. Use **Link Animation** to re-establish a broken connection.
+If the blueprint's structure changes, open each animation and click **Refresh from Blueprint** to update the cached schema.
 
-If the blueprint's structure changes (parts or outfits added/removed), open each animation and click **Refresh from Blueprint** to update the cached schema.
+## Auto-Completion Detection
+
+Variants are automatically "done" when their drawn frame count matches the base variant in the same part/slot. The base variant must have at least one frame. Skipped (intentionally absent) variants are excluded. No manual marking is needed.
 
 ## Strict Save
 
-When save mode is "block" (default), CharacterForge prevents saving animation files that have structural errors (missing layers, frame count mismatches). Toggle between strict and warn-only mode via Settings or **CharacterForge: Toggle Strict Save**.
+When save mode is "block" (default), CharacterForge prevents saving animation files with structural errors. Toggle via Settings or **CharacterForge: Toggle Strict Save**.
 
 ## Variants
 
 ### Outfits
 
-Visual alternatives configured per-part. Each part can have its own set -- hair might have ponytail/short/braids while torso has armor/casual. The base variant is always required. Frame counts must match the base.
+Visual alternatives configured per-part. Each part can have its own set. The base variant is always required. Frame counts must match the base.
 
 ### Effects
 
-Conditional overlays that only apply to specific animations via an `applies_to` filter. For example, a "damaged" effect that only appears in hit/death animations.
+Conditional overlays that only apply to specific animations via an `applies_to` filter.
 
 ### Skipped (Intentionally Absent)
 
-Mark a variant as skipped via Settings > Toggle Absent. Skipped variants are excluded from frame-count validation. Useful when a variant doesn't apply to a specific part (e.g., helmet outfit doesn't need leg art).
+Mark a variant as skipped via Settings > Toggle Absent to exclude it from frame-count validation.
 
 ## Schema
 
@@ -118,9 +157,10 @@ Character data is stored in Aseprite extension properties under `infinitegamewor
 |---|---|
 | `plugin.lua` | Entry point, command registration, save-time validation hooks |
 | `blueprint.lua` | Schema CRUD, layer structure, animation creation, completion sync |
-| `blueprint_editor.lua` | Two-step create dialog, hub-style edit dialog |
+| `blueprint_editor.lua` | Two-step create wizard, hub-style edit dialogs, animation editor |
 | `validator.lua` | Layer structure and frame-count validation |
-| `panel.lua` | Floating panel with context-sensitive controls and scrollable canvas |
+| `panel.lua` | Floating panel with context-sensitive controls, scrollable canvas, drag-and-drop |
+| `dialog_utils.lua` | Shared dialog helpers: scrollable list canvas, truncated alerts |
 | `utils.lua` | Shared color constants |
 | `__pref.lua` | Preference initialization |
 
