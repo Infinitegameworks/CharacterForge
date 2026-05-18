@@ -415,9 +415,15 @@ local function drawBlueprintProgressView(gc, schema)
         fillRect(gc, indent, sy - 2, 324 - indent + 8, 14, Color{ r = 46, g = 46, b = 46, a = 255 })
       end
       drawProgressDot(gc, indent + 4, sy + 1, dotColor)
-      local displayName = anim.name or "unnamed"
-      if anim.direction and anim.direction ~= "" then
-        displayName = displayName .. " [" .. anim.direction .. "]"
+      local displayName
+      local inGroup = (anim.group or "") ~= "" and anim.direction and anim.direction ~= ""
+      if inGroup then
+        displayName = anim.direction
+      else
+        displayName = anim.name or "unnamed"
+        if anim.direction and anim.direction ~= "" then
+          displayName = displayName .. " [" .. anim.direction .. "]"
+        end
       end
       drawText(gc, displayName .. ": " .. label, indent + 20, sy, utils.COLOR_TEXT)
       drawText(gc, fileExists and "open" or "create", 286, sy, hovered and utils.COLOR_TEXT or utils.COLOR_MUTED)
@@ -1177,17 +1183,47 @@ function panel.open()
           if spr and blueprint.isBlueprint(spr) then
             local schema = blueprint.readBlueprintSchema(spr)
             if schema then
+              local draggedAnim = nil
               for _, anim in ipairs(schema.animations or {}) do
                 if animRowKey(anim) == dragAnimKey then
-                  anim.group = droppedOnGroup or ""
+                  draggedAnim = anim
                   break
                 end
               end
-              schema = blueprint.normalizeSchema(schema)
-              app.transaction(function()
-                blueprint.writeBlueprintSchema(spr, schema)
-              end)
-              refreshPanel()
+
+              if draggedAnim then
+                local newGroup = droppedOnGroup or ""
+                local hasDirection = draggedAnim.direction and draggedAnim.direction ~= ""
+                local proceed = true
+
+                if hasDirection and newGroup ~= (draggedAnim.group or "") then
+                  local choice = app.alert{
+                    title = "Move Direction Group",
+                    text = "'" .. draggedAnim.name .. "' has multiple directions.\nMove ALL directions to '" .. (newGroup ~= "" and newGroup or "ungrouped") .. "'?",
+                    buttons = { "Move All", "Move This Only", "Cancel" },
+                  }
+                  if choice == 1 then
+                    for _, anim in ipairs(schema.animations or {}) do
+                      if anim.name == draggedAnim.name then
+                        anim.group = newGroup
+                      end
+                    end
+                    proceed = false
+                  elseif choice == 3 then
+                    proceed = false
+                  end
+                end
+
+                if proceed then
+                  draggedAnim.group = newGroup
+                end
+
+                schema = blueprint.normalizeSchema(schema)
+                app.transaction(function()
+                  blueprint.writeBlueprintSchema(spr, schema)
+                end)
+                refreshPanel()
+              end
             end
           end
         end
