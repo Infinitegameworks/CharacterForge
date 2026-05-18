@@ -1,4 +1,5 @@
 local blueprint = require 'blueprint'
+local dialogUtils = require 'dialog_utils'
 
 local blueprintEditor = {}
 
@@ -171,7 +172,7 @@ function blueprintEditor.showCreateDialog()
     dlg:entry{ id = "characterName", label = "Character:", text = charName }
 
     dlg:separator{ text = "Parts (" .. #parts .. ")" }
-    if #parts > 0 then dlg:label{ text = table.concat(parts, ", ") } end
+    dialogUtils.scrollableList(dlg, "partsList", 340, math.min(56, math.max(28, #parts * 14 + 12)), parts, "(none)")
     dlg:entry{ id = "addPart", label = "Name:", text = "" }
     dlg:button{ id = "addPartBtn", text = "Add Part", onclick = function() dlg:close() end }
     if #parts > 0 then
@@ -180,7 +181,7 @@ function blueprintEditor.showCreateDialog()
     end
 
     dlg:separator{ text = "Default Outfits (" .. #outfits .. ")" }
-    if #outfits > 0 then dlg:label{ text = table.concat(outfits, ", ") } end
+    dialogUtils.scrollableList(dlg, "outfitsList", 340, math.min(42, math.max(28, #outfits * 14 + 12)), outfits, "(none)")
     dlg:entry{ id = "addOutfit", label = "Name:", text = "" }
     dlg:button{ id = "addOutfitBtn", text = "Add Outfit", onclick = function() dlg:close() end }
     if #outfits > 0 then
@@ -189,7 +190,7 @@ function blueprintEditor.showCreateDialog()
     end
 
     dlg:separator{ text = "Default Effects (" .. #effects .. ")" }
-    if #effects > 0 then dlg:label{ text = table.concat(effects, ", ") } end
+    dialogUtils.scrollableList(dlg, "effectsList", 340, math.min(42, math.max(28, #effects * 14 + 12)), effects, "(none)")
     dlg:entry{ id = "addEffect", label = "Name:", text = "" }
     dlg:button{ id = "addEffectBtn", text = "Add Effect", onclick = function() dlg:close() end }
     if #effects > 0 then
@@ -198,7 +199,7 @@ function blueprintEditor.showCreateDialog()
     end
 
     dlg:separator{ text = "Animations (" .. #anims .. ")" }
-    if #anims > 0 then dlg:label{ text = table.concat(anims, ", ") } end
+    dialogUtils.scrollableList(dlg, "animsList", 340, math.min(56, math.max(28, #anims * 14 + 12)), anims, "(none)")
     dlg:entry{ id = "addAnim", label = "Name:", text = "" }
     dlg:button{ id = "addAnimBtn", text = "Add Animation", onclick = function() dlg:close() end }
     if #anims > 0 then
@@ -290,8 +291,8 @@ function blueprintEditor._showStep2(charName, bodyParts, animText, saveDir)
     local partNames = {}
     for _, p in ipairs(bodyParts) do partNames[#partNames + 1] = p.name end
 
-    local outfits = part and table.concat(partVariantNames(part, "variant"), ", ") or ""
-    local effects = part and table.concat(partVariantNames(part, "state"), ", ") or ""
+    local outfitNames = part and partVariantNames(part, "variant") or {}
+    local effectNames = part and partVariantNames(part, "state") or {}
     local removeOpts = part and partVariantNames(part) or {}
 
     local title = "Step 2: " .. (part and part.name or "")
@@ -303,8 +304,11 @@ function blueprintEditor._showStep2(charName, bodyParts, animText, saveDir)
       selectedName = dlg.data.partSelect or selectedName; dlg:close()
     end }
 
-    dlg:separator{ text = "Outfits: " .. (outfits ~= "" and outfits or "(none)") }
-    if effects ~= "" then dlg:label{ text = "Effects: " .. effects } end
+    local allVars = {}
+    for _, name in ipairs(outfitNames) do allVars[#allVars + 1] = name .. " (outfit)" end
+    for _, name in ipairs(effectNames) do allVars[#allVars + 1] = name .. " (effect)" end
+    dlg:separator{ text = "Outfits & Effects" }
+    dialogUtils.scrollableList(dlg, "variantsList", 300, math.min(56, math.max(28, #allVars * 14 + 12)), allVars, "(base only)")
 
     dlg:entry{ id = "addNames", label = "Add:", text = "" }
     dlg:combobox{ id = "addKind", label = "Kind:", options = { "outfit", "effect" } }
@@ -452,12 +456,10 @@ function blueprintEditor._editParts(spr)
 
     local dlg = Dialog{ title = "Edit Parts (" .. #partNames .. ")" }
 
-    if #partNames > 0 then
-      dlg:label{ text = table.concat(partNames, "\n") }
-    end
+    dialogUtils.scrollableList(dlg, "partsList", 300, math.min(100, math.max(28, #partNames * 14 + 12)), partNames, "(no parts)")
 
     dlg:separator{ text = "Add" }
-    dlg:entry{ id = "newParts", label = "Names:", text = "" }
+    dlg:entry{ id = "newParts", label = "Name:", text = "" }
     dlg:button{ id = "addBtn", text = "Add Part(s)", onclick = function() dlg:close() end }
 
     if #partNames > 0 then
@@ -525,12 +527,11 @@ function blueprintEditor._editOutfits(spr)
       selectedPartName = dlg.data.partSelect or selectedPartName; dlg:close()
     end }
 
-    dlg:separator{ text = "Outfits: " .. (#outfits > 0 and table.concat(outfits, ", ") or "(none)") }
-    if #effects > 0 then
-      dlg:label{ text = "Effects: " .. table.concat(effects, ", ") }
-    else
-      dlg:label{ text = "Effects: (none)" }
-    end
+    local allVariants = {}
+    for _, name in ipairs(outfits) do allVariants[#allVariants + 1] = name .. " (outfit)" end
+    for _, name in ipairs(effects) do allVariants[#allVariants + 1] = name .. " (effect)" end
+    dlg:separator{ text = "Outfits & Effects" }
+    dialogUtils.scrollableList(dlg, "variantsList", 320, math.min(70, math.max(28, #allVariants * 14 + 12)), allVariants, "(base only)")
 
     dlg:entry{ id = "addNames", label = "Add:", text = "" }
     dlg:combobox{ id = "addKind", label = "Kind:", options = { "outfit", "effect" } }
@@ -610,12 +611,10 @@ function blueprintEditor._editAnimations(spr)
 
     local dlg = Dialog{ title = "Edit Animations (" .. #animNames .. ")" }
 
-    if #animLabels > 0 then
-      dlg:label{ text = table.concat(animLabels, "\n") }
-    end
+    dialogUtils.scrollableList(dlg, "animsList", 300, math.min(100, math.max(28, #animLabels * 14 + 12)), animLabels, "(no animations)")
 
     dlg:separator{ text = "Add" }
-    dlg:entry{ id = "newAnims", label = "Names:", text = "" }
+    dlg:entry{ id = "newAnims", label = "Name:", text = "" }
     dlg:button{ id = "addBtn", text = "Add Animation(s)", onclick = function() dlg:close() end }
 
     if #animNames > 0 then
@@ -750,8 +749,11 @@ function blueprintEditor._editAnimOutfits(animSprite, data, applyToBp, bpPath)
       selectedPartName = dlg.data.partSelect or selectedPartName; dlg:close()
     end }
 
-    dlg:separator{ text = "Outfits: " .. (#outfits > 0 and table.concat(outfits, ", ") or "(none)") }
-    dlg:label{ text = "Effects: " .. (#effects > 0 and table.concat(effects, ", ") or "(none)") }
+    local allVariants = {}
+    for _, name in ipairs(outfits) do allVariants[#allVariants + 1] = name .. " (outfit)" end
+    for _, name in ipairs(effects) do allVariants[#allVariants + 1] = name .. " (effect)" end
+    dlg:separator{ text = "Outfits & Effects" }
+    dialogUtils.scrollableList(dlg, "variantsList", 320, math.min(70, math.max(28, #allVariants * 14 + 12)), allVariants, "(base only)")
 
     dlg:entry{ id = "addNames", label = "Add:", text = "" }
     dlg:combobox{ id = "addKind", label = "Kind:", options = { "outfit", "effect" } }
@@ -810,10 +812,10 @@ function blueprintEditor._editAnimParts(animSprite, data, applyToBp, bpPath)
     for _, part in ipairs(schema.body_parts or {}) do partNameList[#partNameList + 1] = part.name end
 
     local dlg = Dialog{ title = "Edit Parts (" .. #partNameList .. ")" }
-    if #partNames > 0 then dlg:label{ text = table.concat(partNames, "\n") } end
+    dialogUtils.scrollableList(dlg, "partsList", 300, math.min(100, math.max(28, #partNames * 14 + 12)), partNames, "(no parts)")
 
     dlg:separator{ text = "Add" }
-    dlg:entry{ id = "newParts", label = "Names:", text = "" }
+    dlg:entry{ id = "newParts", label = "Name:", text = "" }
     dlg:button{ id = "addBtn", text = "Add Part(s)", onclick = function() dlg:close() end }
 
     if #partNameList > 0 then
