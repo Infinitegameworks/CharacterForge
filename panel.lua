@@ -283,11 +283,10 @@ local function drawBlueprintProgressView(gc, schema)
   local started = 0
   local complete = 0
   for _, anim in ipairs(anims) do
-    if anim.status == "valid" then
-      complete = complete + 1
+    local fileOnDisk = bpDir and anim.file and anim.file ~= "" and app.fs.isFile(app.fs.joinPath(bpDir, anim.file))
+    if fileOnDisk then
       started = started + 1
-    elseif bpDir and anim.file and anim.file ~= "" and app.fs.isFile(app.fs.joinPath(bpDir, anim.file)) then
-      started = started + 1
+      if anim.status == "valid" then complete = complete + 1 end
     end
   end
 
@@ -301,15 +300,13 @@ local function drawBlueprintProgressView(gc, schema)
   for i, anim in ipairs(anims) do
     local label
     local dotColor
-    local fileExists = false
-    if anim.status == "valid" then
+    local fileExists = bpDir and anim.file and anim.file ~= "" and app.fs.isFile(app.fs.joinPath(bpDir, anim.file))
+    if fileExists and anim.status == "valid" then
       label = "complete"
       dotColor = utils.COLOR_PASS
-      fileExists = true
-    elseif bpDir and anim.file and anim.file ~= "" and app.fs.isFile(app.fs.joinPath(bpDir, anim.file)) then
+    elseif fileExists then
       label = "started"
       dotColor = utils.COLOR_WARN
-      fileExists = true
     else
       label = "not created"
       dotColor = utils.COLOR_UNKNOWN
