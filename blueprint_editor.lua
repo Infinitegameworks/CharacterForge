@@ -23,83 +23,6 @@ local function parseList(value, fallback)
   return out
 end
 
-local function makeVariants(variantText, stateText)
-  local variants = {
-    { id = "variant_base", name = "base", type = "variant", required = true },
-  }
-
-  for _, name in ipairs(parseList(variantText, "")) do
-    if name ~= "base" then
-      variants[#variants + 1] = {
-        name = name,
-        type = "variant",
-        required = false,
-      }
-    end
-  end
-
-  for _, name in ipairs(parseList(stateText, "")) do
-    if name ~= "base" then
-      variants[#variants + 1] = {
-        name = name,
-        type = "state",
-        required = false,
-      }
-    end
-  end
-
-  return variants
-end
-
-local function cloneVariants(variants)
-  local out = {}
-  for i, variant in ipairs(variants or {}) do
-    out[i] = {
-      id = variant.id,
-      name = variant.name,
-      type = variant.type,
-      required = variant.required,
-    }
-  end
-  return out
-end
-
-local function makeBodyParts(partsText, slotsText, variants)
-  local bodyParts = {}
-  local slots = parseList(slotsText, "default")
-
-  for _, partName in ipairs(parseList(partsText, "")) do
-    local partSlots = {}
-    for _, slotName in ipairs(slots) do
-      partSlots[#partSlots + 1] = {
-        name = slotName,
-        required = true,
-        variants = cloneVariants(variants),
-      }
-    end
-
-    bodyParts[#bodyParts + 1] = {
-      name = partName,
-      sort_order = #bodyParts + 1,
-      slots = partSlots,
-    }
-  end
-
-  return bodyParts
-end
-
-local function makeAnimations(text)
-  local animations = {}
-  for _, name in ipairs(parseList(text, "")) do
-    animations[#animations + 1] = {
-      name = name,
-      file = "",
-      status = "missing",
-    }
-  end
-  return animations
-end
-
 local function hasNamedItem(list, name)
   for _, item in ipairs(list or {}) do
     if item.name == name then return true end
@@ -115,6 +38,13 @@ local function removeNamedItem(list, name)
     end
   end
   return false
+end
+
+local function findNamedItem(list, name)
+  for _, item in ipairs(list or {}) do
+    if item.name == name then return item end
+  end
+  return nil
 end
 
 local function cloneVariant(variant)
@@ -140,119 +70,72 @@ local function cloneSlot(slot)
   }
 end
 
-local function defaultSlot()
+local function defaultSlot(variants)
+  local vars = {{ id = "variant_base", name = "base", type = "variant", required = true }}
+  for _, v in ipairs(variants or {}) do
+    if v.name ~= "base" then vars[#vars + 1] = cloneVariant(v) end
+  end
   return {
     id = "slot_default",
     name = "default",
     required = true,
-    variants = {
-      { id = "variant_base", name = "base", type = "variant", required = true },
-    },
+    variants = vars,
   }
 end
 
-local function slotTemplates(schema)
-  local slots = {}
-  local seen = {}
-  for _, part in ipairs(schema.body_parts or {}) do
-    for _, slot in ipairs(part.slots or {}) do
-      if not seen[slot.name] then
-        slots[#slots + 1] = cloneSlot(slot)
-        seen[slot.name] = true
-      end
-    end
+local function makeAnimations(text)
+  local animations = {}
+  for _, name in ipairs(parseList(text, "")) do
+    animations[#animations + 1] = {
+      name = name,
+      file = "",
+      status = "missing",
+    }
   end
-  if #slots == 0 then slots[1] = defaultSlot() end
-  return slots
+  return animations
 end
 
-local function partOptions(schema)
-  local options = { "all parts" }
-  for _, part in ipairs(schema.body_parts or {}) do
-    options[#options + 1] = part.name
-  end
-  return options
-end
-
-local function partNames(schema)
-  local options = {}
-  for _, part in ipairs(schema.body_parts or {}) do
-    options[#options + 1] = part.name
-  end
-  return options
-end
-
-local function variantNames(schema)
+local function partVariantNames(part, variantType)
   local names = {}
   local seen = {}
-  for _, part in ipairs(schema.body_parts or {}) do
-    for _, slot in ipairs(part.slots or {}) do
-      for _, variant in ipairs(slot.variants or {}) do
-        if variant.name ~= "base" and not seen[variant.name] then
-          names[#names + 1] = variant.name
-          seen[variant.name] = true
-        end
+  for _, slot in ipairs(part.slots or {}) do
+    for _, v in ipairs(slot.variants or {}) do
+      if v.name ~= "base" and (not variantType or v.type == variantType) and not seen[v.name] then
+        names[#names + 1] = v.name
+        seen[v.name] = true
       end
     end
   end
   return names
 end
 
-local function animationNames(schema)
+local function partVariantNamesForRemove(part)
   local names = {}
-  for _, anim in ipairs(schema.animations or {}) do
-    names[#names + 1] = anim.name
+  local seen = {}
+  for _, slot in ipairs(part.slots or {}) do
+    for _, v in ipairs(slot.variants or {}) do
+      if v.name ~= "base" and not seen[v.name] then
+        local label = v.name .. " (" .. (v.type == "state" and "effect" or "outfit") .. ")"
+        names[#names + 1] = v.name
+        seen[v.name] = true
+      end
+    end
   end
   return names
 end
 
-local function slotOptions(schema)
-  local options = { "all slots" }
-  local seen = {}
-  for _, slot in ipairs(slotTemplates(schema)) do
-    if not seen[slot.name] then
-      options[#options + 1] = slot.name
-      seen[slot.name] = true
-    end
-  end
-  return options
-end
-
-local function countSlots(schema)
-  local seen = {}
-  local count = 0
-  for _, part in ipairs(schema.body_parts or {}) do
-    for _, slot in ipairs(part.slots or {}) do
-      if not seen[slot.name] then
-        seen[slot.name] = true
-        count = count + 1
-      end
-    end
-  end
-  return count
-end
-
-local function countVariants(schema, variantType)
-  local seen = {}
-  local count = 0
-  for _, part in ipairs(schema.body_parts or {}) do
-    for _, slot in ipairs(part.slots or {}) do
-      for _, variant in ipairs(slot.variants or {}) do
-        if variant.type == variantType and variant.name ~= "base" and not seen[variant.name] then
-          seen[variant.name] = true
-          count = count + 1
-        end
-      end
-    end
-  end
-  return count
+local function partSummary(part)
+  local outfits = partVariantNames(part, "variant")
+  local effects = partVariantNames(part, "state")
+  local text = #outfits .. " outfit(s)"
+  if #effects > 0 then text = text .. ", " .. #effects .. " effect(s)" end
+  return text
 end
 
 local function schemaSummary(schema)
-  return tostring(#(schema.body_parts or {})) .. " parts, " ..
-         tostring(countSlots(schema)) .. " slots, " ..
-         tostring(countVariants(schema, "variant")) .. " outfits, " ..
-         tostring(countVariants(schema, "state")) .. " effects"
+  local parts = #(schema.body_parts or {})
+  local anims = #(schema.animations or {})
+  return tostring(parts) .. " parts, " .. tostring(anims) .. " animations"
 end
 
 local function applyBlueprintSchema(sprite, schema)
@@ -263,6 +146,8 @@ local function applyBlueprintSchema(sprite, schema)
   end)
   return blueprint.readBlueprintSchema(sprite)
 end
+
+-- ─── Templates ──────────────────────────────────────────
 
 local TEMPLATE_OPTIONS = {
   "Humanoid (6 parts)",
@@ -280,8 +165,10 @@ local TEMPLATE_PARTS = {
 
 local TEMPLATE_ANIMATIONS = "idle, walk, run"
 
+-- ─── Create Dialog (Two-Step) ───────────────────────────
+
 function blueprintEditor.showCreateDialog()
-  local dlg = Dialog{ title = "Create Character Blueprint" }
+  local dlg = Dialog{ title = "Create Character — Step 1: Structure" }
 
   dlg:combobox{
     id = "template",
@@ -295,8 +182,8 @@ function blueprintEditor.showCreateDialog()
   }
   dlg:entry{ id = "characterName", label = "Character:", text = "" }
   dlg:entry{ id = "bodyParts", label = "Parts:", text = TEMPLATE_PARTS[TEMPLATE_OPTIONS[1]] }
-  dlg:entry{ id = "regularVariants", label = "Outfits:", text = "armor" }
-  dlg:entry{ id = "stateVariants", label = "Effects:", text = "" }
+  dlg:entry{ id = "defaultOutfits", label = "Default Outfits:", text = "" }
+  dlg:entry{ id = "defaultEffects", label = "Default Effects:", text = "" }
   dlg:entry{ id = "animations", label = "Animations:", text = TEMPLATE_ANIMATIONS }
   dlg:file{
     id = "saveDir",
@@ -306,12 +193,13 @@ function blueprintEditor.showCreateDialog()
     save = false,
     filetypes = {},
   }
-  dlg:button{ id = "create", text = "Create" }
+  dlg:button{ id = "next", text = "Next: Per-Part Setup" }
+  dlg:button{ id = "createNow", text = "Create With Defaults" }
   dlg:button{ id = "cancel", text = "Cancel" }
 
   dlg:show()
 
-  if not dlg.data.create then return end
+  if dlg.data.cancel or (not dlg.data.next and not dlg.data.createNow) then return end
 
   local charName = trim(dlg.data.characterName)
   if charName == "" then
@@ -319,17 +207,141 @@ function blueprintEditor.showCreateDialog()
     return
   end
 
-  local variants = makeVariants(dlg.data.regularVariants, dlg.data.stateVariants)
-  local bodyParts = makeBodyParts(dlg.data.bodyParts, "default", variants)
-  if #bodyParts == 0 then
+  local partNameList = parseList(dlg.data.bodyParts, "")
+  if #partNameList == 0 then
     app.alert("At least one body part is required.")
     return
   end
 
+  local defaultOutfits = parseList(dlg.data.defaultOutfits, "")
+  local defaultEffects = parseList(dlg.data.defaultEffects, "")
+  local animText = dlg.data.animations
+  local saveDir = dlg.data.saveDir
+
+  local bodyParts = {}
+  for _, partName in ipairs(partNameList) do
+    local variants = {{ id = "variant_base", name = "base", type = "variant", required = true }}
+    for _, name in ipairs(defaultOutfits) do
+      variants[#variants + 1] = { name = name, type = "variant", required = false }
+    end
+    for _, name in ipairs(defaultEffects) do
+      variants[#variants + 1] = { name = name, type = "state", required = false }
+    end
+    bodyParts[#bodyParts + 1] = {
+      name = partName,
+      sort_order = #bodyParts + 1,
+      slots = { defaultSlot(variants) },
+    }
+  end
+
+  if dlg.data.next then
+    blueprintEditor._showStep2(charName, bodyParts, animText, saveDir)
+  else
+    blueprintEditor._finishCreate(charName, bodyParts, animText, saveDir)
+  end
+end
+
+function blueprintEditor._showStep2(charName, bodyParts, animText, saveDir)
+  local dlg = Dialog{ title = "Create Character — Step 2: Per-Part Outfits" }
+
+  local function selectedPart()
+    local name = dlg.data.partSelect
+    return findNamedItem(bodyParts, name)
+  end
+
+  local function refreshPartView()
+    local part = selectedPart()
+    if part then
+      dlg:modify{ id = "partInfo", text = part.name .. ": " .. partSummary(part) }
+      dlg:modify{ id = "currentOutfits", text = "Outfits: " .. table.concat(partVariantNames(part, "variant"), ", ") }
+      dlg:modify{ id = "currentEffects", text = "Effects: " .. table.concat(partVariantNames(part, "state"), ", ") }
+      dlg:modify{ id = "removeChoice", options = partVariantNamesForRemove(part) }
+    end
+  end
+
+  local partNameOptions = {}
+  for _, part in ipairs(bodyParts) do
+    partNameOptions[#partNameOptions + 1] = part.name
+  end
+
+  dlg:combobox{
+    id = "partSelect",
+    label = "Part:",
+    options = partNameOptions,
+    onchange = function() refreshPartView() end,
+  }
+  dlg:label{ id = "partInfo", text = "" }
+  dlg:label{ id = "currentOutfits", text = "" }
+  dlg:label{ id = "currentEffects", text = "" }
+
+  dlg:separator{ text = "Add to This Part" }
+  dlg:entry{ id = "addNames", label = "Names:", text = "" }
+  dlg:combobox{ id = "addKind", label = "Kind:", options = { "outfit", "effect" } }
+  dlg:button{
+    id = "addBtn",
+    text = "Add",
+    onclick = function()
+      local part = selectedPart()
+      if not part then return end
+      local kindLabel = dlg.data.addKind or "outfit"
+      local kind = kindLabel == "effect" and "state" or "variant"
+      for _, name in ipairs(parseList(dlg.data.addNames, "")) do
+        if name ~= "base" then
+          for _, slot in ipairs(part.slots or {}) do
+            if not hasNamedItem(slot.variants, name) then
+              slot.variants[#slot.variants + 1] = {
+                name = name,
+                type = kind,
+                required = false,
+              }
+            end
+          end
+        end
+      end
+      dlg:modify{ id = "addNames", text = "" }
+      refreshPartView()
+    end
+  }
+
+  dlg:separator{ text = "Remove from This Part" }
+  dlg:combobox{ id = "removeChoice", label = "Remove:", options = {} }
+  dlg:button{
+    id = "removeBtn",
+    text = "Remove",
+    onclick = function()
+      local part = selectedPart()
+      if not part then return end
+      local name = dlg.data.removeChoice
+      if not name or name == "" then return end
+      for _, slot in ipairs(part.slots or {}) do
+        removeNamedItem(slot.variants, name)
+      end
+      refreshPartView()
+    end
+  }
+
+  dlg:separator()
+  dlg:button{ id = "create", text = "Create Blueprint" }
+  dlg:button{ id = "back", text = "Back" }
+
+  refreshPartView()
+  dlg:show()
+
+  if dlg.data.back then
+    blueprintEditor.showCreateDialog()
+    return
+  end
+
+  if not dlg.data.create then return end
+
+  blueprintEditor._finishCreate(charName, bodyParts, animText, saveDir)
+end
+
+function blueprintEditor._finishCreate(charName, bodyParts, animText, saveDir)
   local schema = blueprint.normalizeSchema({
     character_name = charName,
     body_parts = bodyParts,
-    animations = makeAnimations(dlg.data.animations),
+    animations = makeAnimations(animText),
   })
 
   local spr = Sprite(64, 64, ColorMode.RGB)
@@ -341,7 +353,6 @@ function blueprintEditor.showCreateDialog()
 
   blueprint.writeBlueprintSchema(spr, schema)
 
-  local saveDir = dlg.data.saveDir
   if saveDir and saveDir ~= "" then
     local dir = app.fs.filePath(saveDir)
     if dir == "" then dir = saveDir end
@@ -354,6 +365,8 @@ function blueprintEditor.showCreateDialog()
   app.alert("Blueprint created: " .. charName)
 end
 
+-- ─── Edit Dialog (Part-Scoped) ──────────────────────────
+
 function blueprintEditor.showEditDialog()
   local spr = app.activeSprite
   if not spr or not blueprint.isBlueprint(spr) then
@@ -362,183 +375,186 @@ function blueprintEditor.showEditDialog()
   end
 
   local schema = blueprint.readBlueprintSchema(spr)
-  local dlg = Dialog{ title = "Edit Blueprint" }
+  local dlg = Dialog{ title = "Edit: " .. (schema.character_name or "Blueprint") }
 
-  local hasSlotSection = countSlots(schema) > 1
-
-  local function refresh()
-    schema = blueprint.readBlueprintSchema(spr)
-    dlg:modify{ id = "summary", text = schemaSummary(schema) }
-    dlg:modify{ id = "removePart", options = partNames(schema) }
-    if hasSlotSection then
-      dlg:modify{ id = "targetPart", options = partOptions(schema) }
-      dlg:modify{ id = "removeSlot", options = slotOptions(schema) }
+  local function partNames()
+    local names = {}
+    for _, part in ipairs(schema.body_parts or {}) do
+      names[#names + 1] = part.name
     end
-    dlg:modify{ id = "targetSlot", options = slotOptions(schema) }
-    dlg:modify{ id = "removeVariant", options = variantNames(schema) }
-    dlg:modify{ id = "removeAnimation", options = animationNames(schema) }
+    return names
+  end
+
+  local function animNames()
+    local names = {}
+    for _, anim in ipairs(schema.animations or {}) do
+      names[#names + 1] = anim.name
+    end
+    return names
+  end
+
+  local function selectedPart()
+    local name = dlg.data.editPart
+    return findNamedItem(schema.body_parts, name)
   end
 
   local function commit()
     schema = applyBlueprintSchema(spr, schema)
-    refresh()
+  end
+
+  local function refreshPartView()
+    local part = selectedPart()
+    if part then
+      dlg:modify{ id = "partDetail", text = part.name .. ": " .. partSummary(part) }
+      local outfitList = partVariantNames(part, "variant")
+      local effectList = partVariantNames(part, "state")
+      dlg:modify{ id = "outfitList", text = #outfitList > 0 and table.concat(outfitList, ", ") or "(none)" }
+      dlg:modify{ id = "effectList", text = #effectList > 0 and table.concat(effectList, ", ") or "(none)" }
+      dlg:modify{ id = "removeFromPart", options = partVariantNamesForRemove(part) }
+    else
+      dlg:modify{ id = "partDetail", text = "No part selected" }
+      dlg:modify{ id = "outfitList", text = "" }
+      dlg:modify{ id = "effectList", text = "" }
+      dlg:modify{ id = "removeFromPart", options = {} }
+    end
+  end
+
+  local function refreshAll()
+    dlg:modify{ id = "summary", text = schemaSummary(schema) }
+    dlg:modify{ id = "editPart", options = partNames() }
+    dlg:modify{ id = "removePart", options = partNames() }
+    dlg:modify{ id = "removeAnimation", options = animNames() }
+    refreshPartView()
   end
 
   dlg:label{ id = "summary", text = schemaSummary(schema) }
 
+  -- ── Parts section ──
   dlg:separator{ text = "Parts" }
   dlg:entry{ id = "newParts", label = "Add:", text = "" }
   dlg:button{
     id = "addParts",
     text = "Add Part(s)",
     onclick = function()
-      local templates = slotTemplates(schema)
       for _, name in ipairs(parseList(dlg.data.newParts, "")) do
         if not hasNamedItem(schema.body_parts, name) then
-          local slots = {}
-          for _, slot in ipairs(templates) do
-            slots[#slots + 1] = cloneSlot(slot)
-          end
           schema.body_parts[#schema.body_parts + 1] = {
             name = name,
             sort_order = #schema.body_parts + 1,
-            slots = slots,
+            slots = { defaultSlot() },
           }
         end
       end
       dlg:modify{ id = "newParts", text = "" }
       commit()
+      refreshAll()
     end
   }
-  dlg:combobox{ id = "removePart", label = "Remove:", options = partNames(schema) }
+  dlg:combobox{ id = "removePart", label = "Remove:", options = partNames() }
   dlg:button{
-    id = "removeParts",
+    id = "removePartBtn",
     text = "Remove Part",
     onclick = function()
       local name = dlg.data.removePart
       if not name or name == "" then return end
-      local confirm = app.alert{
-        title = "Remove Part",
-        text = "Remove '" .. name .. "' from all slots?",
-        buttons = { "Remove", "Cancel" },
-      }
-      if confirm == 1 then
+      if app.alert{ title = "Remove Part", text = "Remove '" .. name .. "'?", buttons = { "Remove", "Cancel" } } == 1 then
         removeNamedItem(schema.body_parts, name)
         commit()
+        refreshAll()
       end
     end
   }
 
-  if countSlots(schema) > 1 then
-    dlg:separator{ text = "Slots" }
-    dlg:combobox{ id = "targetPart", label = "Part:", options = partOptions(schema) }
-    dlg:entry{ id = "newSlots", label = "Add:", text = "" }
-    dlg:button{
-      id = "addSlots",
-      text = "Add Slot(s)",
-      onclick = function()
-        local target = dlg.data.targetPart or "all parts"
-        for _, part in ipairs(schema.body_parts or {}) do
-          if target == "all parts" or target == part.name then
-            for _, slotName in ipairs(parseList(dlg.data.newSlots, "")) do
-              if not hasNamedItem(part.slots, slotName) then
-                part.slots[#part.slots + 1] = {
-                  name = slotName,
-                  required = true,
-                  variants = {
-                    { id = "variant_base", name = "base", type = "variant", required = true },
-                  },
-                }
-              end
-            end
-          end
-        end
-        dlg:modify{ id = "newSlots", text = "" }
-        commit()
-      end
-    }
-    dlg:combobox{ id = "removeSlot", label = "Remove:", options = slotOptions(schema) }
-    dlg:button{
-      id = "removeSlots",
-      text = "Remove Slot",
-      onclick = function()
-        local name = dlg.data.removeSlot
-        if not name or name == "" or name == "all slots" then return end
-        local target = dlg.data.targetPart or "all parts"
-        local confirm = app.alert{
-          title = "Remove Slot",
-          text = "Remove slot '" .. name .. "' from " .. target .. "?",
-          buttons = { "Remove", "Cancel" },
-        }
-        if confirm == 1 then
-          for _, part in ipairs(schema.body_parts or {}) do
-            if target == "all parts" or target == part.name then
-              removeNamedItem(part.slots, name)
-            end
-          end
-          commit()
-        end
-      end
-    }
-  end
+  -- ── Per-part variant editing ──
+  dlg:separator{ text = "Edit Part" }
+  dlg:combobox{
+    id = "editPart",
+    label = "Part:",
+    options = partNames(),
+    onchange = function() refreshPartView() end,
+  }
+  dlg:label{ id = "partDetail", text = "" }
+  dlg:label{ id = "outfitList", text = "" }
+  dlg:label{ id = "effectList", text = "" }
 
-  dlg:separator{ text = "Outfits And Effects" }
-  dlg:combobox{ id = "targetSlot", label = "Slot:", options = slotOptions(schema) }
-  dlg:entry{ id = "newVariants", label = "Add:", text = "" }
-  dlg:combobox{ id = "variantKind", label = "Kind:", options = { "outfit", "effect" } }
-  dlg:check{ id = "required", label = "Required", selected = false }
+  dlg:entry{ id = "addToPart", label = "Add:", text = "" }
+  dlg:combobox{ id = "addKind", label = "Kind:", options = { "outfit", "effect" } }
   dlg:button{
-    id = "addVariants",
-    text = "Add",
+    id = "addToPartBtn",
+    text = "Add to Part",
     onclick = function()
-      local target = dlg.data.targetSlot or "all slots"
-      local kindLabel = dlg.data.variantKind or "outfit"
+      local part = selectedPart()
+      if not part then app.alert("Select a part first."); return end
+      local kindLabel = dlg.data.addKind or "outfit"
+      local kind = kindLabel == "effect" and "state" or "variant"
+      for _, name in ipairs(parseList(dlg.data.addToPart, "")) do
+        if name ~= "base" then
+          for _, slot in ipairs(part.slots or {}) do
+            if not hasNamedItem(slot.variants, name) then
+              slot.variants[#slot.variants + 1] = {
+                name = name,
+                type = kind,
+                required = false,
+              }
+            end
+          end
+        end
+      end
+      dlg:modify{ id = "addToPart", text = "" }
+      commit()
+      refreshAll()
+    end
+  }
+
+  dlg:combobox{ id = "removeFromPart", label = "Remove:", options = {} }
+  dlg:button{
+    id = "removeFromPartBtn",
+    text = "Remove from Part",
+    onclick = function()
+      local part = selectedPart()
+      if not part then return end
+      local name = dlg.data.removeFromPart
+      if not name or name == "" then return end
+      for _, slot in ipairs(part.slots or {}) do
+        removeNamedItem(slot.variants, name)
+      end
+      commit()
+      refreshAll()
+    end
+  }
+
+  -- ── Bulk add to all parts ──
+  dlg:separator{ text = "All Parts (Bulk)" }
+  dlg:entry{ id = "bulkAdd", label = "Add:", text = "" }
+  dlg:combobox{ id = "bulkKind", label = "Kind:", options = { "outfit", "effect" } }
+  dlg:button{
+    id = "bulkAddBtn",
+    text = "Add to All Parts",
+    onclick = function()
+      local kindLabel = dlg.data.bulkKind or "outfit"
       local kind = kindLabel == "effect" and "state" or "variant"
       for _, part in ipairs(schema.body_parts or {}) do
-        for _, slot in ipairs(part.slots or {}) do
-          if target == "all slots" or target == slot.name then
-            for _, name in ipairs(parseList(dlg.data.newVariants, "")) do
-              if name ~= "base" and not hasNamedItem(slot.variants, name) then
+        for _, name in ipairs(parseList(dlg.data.bulkAdd, "")) do
+          if name ~= "base" then
+            for _, slot in ipairs(part.slots or {}) do
+              if not hasNamedItem(slot.variants, name) then
                 slot.variants[#slot.variants + 1] = {
                   name = name,
                   type = kind,
-                  required = dlg.data.required and true or false,
+                  required = false,
                 }
               end
             end
           end
         end
       end
-      dlg:modify{ id = "newVariants", text = "" }
+      dlg:modify{ id = "bulkAdd", text = "" }
       commit()
-    end
-  }
-  dlg:combobox{ id = "removeVariant", label = "Remove:", options = variantNames(schema) }
-  dlg:button{
-    id = "removeVariants",
-    text = "Remove Outfit/Effect",
-    onclick = function()
-      local name = dlg.data.removeVariant
-      if not name or name == "" then return end
-      local target = dlg.data.targetSlot or "all slots"
-      local confirm = app.alert{
-        title = "Remove Outfit/Effect",
-        text = "Remove '" .. name .. "' from " .. target .. "?",
-        buttons = { "Remove", "Cancel" },
-      }
-      if confirm == 1 then
-        for _, part in ipairs(schema.body_parts or {}) do
-          for _, slot in ipairs(part.slots or {}) do
-            if target == "all slots" or target == slot.name then
-              removeNamedItem(slot.variants, name)
-            end
-          end
-        end
-        commit()
-      end
+      refreshAll()
     end
   }
 
+  -- ── Animations ──
   dlg:separator{ text = "Animations" }
   dlg:entry{ id = "newAnimations", label = "Add:", text = "" }
   dlg:button{
@@ -556,29 +572,28 @@ function blueprintEditor.showEditDialog()
       end
       dlg:modify{ id = "newAnimations", text = "" }
       commit()
+      refreshAll()
     end
   }
-  dlg:combobox{ id = "removeAnimation", label = "Remove:", options = animationNames(schema) }
+  dlg:combobox{ id = "removeAnimation", label = "Remove:", options = animNames() }
   dlg:button{
-    id = "removeAnimations",
+    id = "removeAnimationBtn",
     text = "Remove Animation",
     onclick = function()
       local name = dlg.data.removeAnimation
       if not name or name == "" then return end
-      local confirm = app.alert{
-        title = "Remove Animation",
-        text = "Remove animation '" .. name .. "'?",
-        buttons = { "Remove", "Cancel" },
-      }
-      if confirm == 1 then
+      if app.alert{ title = "Remove Animation", text = "Remove '" .. name .. "'?", buttons = { "Remove", "Cancel" } } == 1 then
         removeNamedItem(schema.animations, name)
         commit()
+        refreshAll()
       end
     end
   }
 
   dlg:separator()
   dlg:button{ id = "close", text = "Close", onclick = function() dlg:close() end }
+
+  refreshAll()
   dlg:show{ wait = false }
 end
 
