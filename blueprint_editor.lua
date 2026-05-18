@@ -145,6 +145,64 @@ local TEMPLATE_PARTS = {
 
 local TEMPLATE_ANIMATIONS = "idle, walk, run"
 
+local DIRECTION_PRESETS = {
+  { name = "8-Direction", dirs = { "front", "front_right", "right", "back_right", "back", "back_left", "left", "front_left" } },
+  { name = "4-Direction", dirs = { "front", "right", "back", "left" } },
+  { name = "Front / Back", dirs = { "front", "back" } },
+  { name = "Front Only", dirs = { "front" } },
+  { name = "Custom", dirs = {} },
+}
+
+local ALL_DIRECTIONS = { "front", "front_right", "right", "back_right", "back", "back_left", "left", "front_left" }
+
+local function showDirectionSetup(currentDirs)
+  local selected = {}
+  for _, d in ipairs(currentDirs or {}) do selected[d] = true end
+
+  local presetNames = {}
+  for _, p in ipairs(DIRECTION_PRESETS) do presetNames[#presetNames + 1] = p.name end
+
+  local dlg = Dialog{ title = "Direction Setup" }
+
+  dlg:combobox{
+    id = "preset", label = "Preset:", options = presetNames,
+    onchange = function()
+      local preset = dlg.data.preset or "Custom"
+      for _, p in ipairs(DIRECTION_PRESETS) do
+        if p.name == preset and preset ~= "Custom" then
+          for _, d in ipairs(ALL_DIRECTIONS) do
+            selected[d] = false
+            pcall(function() dlg:modify{ id = "dir_" .. d, selected = false } end)
+          end
+          for _, d in ipairs(p.dirs) do
+            selected[d] = true
+            pcall(function() dlg:modify{ id = "dir_" .. d, selected = true } end)
+          end
+          break
+        end
+      end
+    end,
+  }
+
+  dlg:separator{ text = "Directions" }
+  for _, d in ipairs(ALL_DIRECTIONS) do
+    dlg:check{ id = "dir_" .. d, label = d, selected = selected[d] == true }
+  end
+
+  dlg:separator()
+  dlg:button{ id = "ok", text = "OK" }
+  dlg:button{ id = "cancel", text = "Cancel" }
+  dlg:show()
+
+  if not dlg.data.ok then return currentDirs end
+
+  local result = {}
+  for _, d in ipairs(ALL_DIRECTIONS) do
+    if dlg.data["dir_" .. d] then result[#result + 1] = d end
+  end
+  return result
+end
+
 -- ─── Create: Step 1 ────────────────────────────────────
 
 function blueprintEditor.showCreateDialog()
@@ -153,6 +211,8 @@ function blueprintEditor.showCreateDialog()
   local outfits = {}
   local effects = {}
   local anims = parseList(TEMPLATE_ANIMATIONS, "")
+  local directions = {}
+  local useDirections = false
   local saveDir = ""
 
   while true do
@@ -207,6 +267,13 @@ function blueprintEditor.showCreateDialog()
       dlg:button{ id = "removeAnimBtn", text = "Remove Animation", onclick = function() dlg:close() end }
     end
 
+    dlg:separator{ text = "Directions" }
+    dlg:check{ id = "useDirections", label = "Include Directions", selected = useDirections }
+    if useDirections and #directions > 0 then
+      dlg:label{ text = table.concat(directions, ", ") }
+    end
+    dlg:button{ id = "setupDirsBtn", text = "Setup Directions", onclick = function() dlg:close() end }
+
     dlg:separator()
     dlg:file{ id = "saveDir", label = "Save In:", filename = saveDir, open = false, save = false, filetypes = {} }
     dlg:button{ id = "next", text = "Next: Per-Part Setup" }
@@ -216,8 +283,12 @@ function blueprintEditor.showCreateDialog()
 
     charName = trim(dlg.data.characterName or charName)
     saveDir = dlg.data.saveDir or saveDir
+    useDirections = dlg.data.useDirections or false
 
-    if dlg.data.addPartBtn then
+    if dlg.data.setupDirsBtn then
+      directions = showDirectionSetup(directions)
+      if #directions > 0 then useDirections = true end
+    elseif dlg.data.addPartBtn then
       local name = trim(dlg.data.addPart)
       if name ~= "" and not hasString(parts, name) then
         parts[#parts + 1] = name
@@ -267,11 +338,12 @@ function blueprintEditor.showCreateDialog()
             slots = { defaultSlot(variants) },
           }
         end
+        local finalDirs = useDirections and directions or {}
         local animText = table.concat(anims, ", ")
         if dlg.data.next then
-          blueprintEditor._showStep2(charName, bodyParts, animText, saveDir)
+          blueprintEditor._showStep2(charName, bodyParts, animText, saveDir, finalDirs)
         else
-          blueprintEditor._finishCreate(charName, bodyParts, animText, saveDir)
+          blueprintEditor._finishCreate(charName, bodyParts, animText, saveDir, finalDirs)
         end
         return
       end
@@ -283,7 +355,7 @@ end
 
 -- ─── Create: Step 2 (per-part, rebuilds on every action) ─
 
-function blueprintEditor._showStep2(charName, bodyParts, animText, saveDir)
+function blueprintEditor._showStep2(charName, bodyParts, animText, saveDir, directions)
   local selectedName = bodyParts[1] and bodyParts[1].name or ""
 
   while true do
@@ -345,7 +417,7 @@ function blueprintEditor._showStep2(charName, bodyParts, animText, saveDir)
     dlg:show()
 
     if dlg.data.create then
-      blueprintEditor._finishCreate(charName, bodyParts, animText, saveDir)
+      blueprintEditor._finishCreate(charName, bodyParts, animText, saveDir, directions)
       return
     elseif dlg.data.back then
       blueprintEditor.showCreateDialog()
@@ -356,11 +428,27 @@ function blueprintEditor._showStep2(charName, bodyParts, animText, saveDir)
   end
 end
 
-function blueprintEditor._finishCreate(charName, bodyParts, animText, saveDir)
+function blueprintEditor._finishCreate(charName, bodyParts, animText, saveDir, directions)
+  directions = directions or {}
+  local animNames = parseList(animText, "")
+  local animations = {}
+  if #directions > 0 then
+    for _, animName in ipairs(animNames) do
+      for _, dir in ipairs(directions) do
+        animations[#animations + 1] = { name = animName, direction = dir, file = "", status = "missing" }
+      end
+    end
+  else
+    for _, animName in ipairs(animNames) do
+      animations[#animations + 1] = { name = animName, direction = "", file = "", status = "missing" }
+    end
+  end
+
   local schema = blueprint.normalizeSchema({
     character_name = charName,
     body_parts = bodyParts,
-    animations = makeAnimations(animText),
+    directions = directions,
+    animations = animations,
   })
 
   local spr = Sprite(64, 64, ColorMode.RGB)

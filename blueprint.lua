@@ -194,10 +194,13 @@ function blueprint.normalizeSchema(schema)
     end
   end
 
+  local directions = cleanArray(schema.directions or {})
+
   local animations = {}
   for i, anim in ipairs(schema.animations or {}) do
     animations[i] = {
       name = anim.name or "",
+      direction = anim.direction or "",
       file = anim.file or "",
       status = anim.status or "missing",
       last_result = anim.last_result or "",
@@ -212,6 +215,7 @@ function blueprint.normalizeSchema(schema)
     character_name = schema.character_name or "",
     body_parts = bodyParts,
     variants = globalVariants,
+    directions = directions,
     animations = animations,
   }
 end
@@ -263,6 +267,7 @@ local function writeAnimationsToProperties(animations)
   for i, anim in ipairs(animations or {}) do
     out[i] = {
       name = anim.name or "",
+      direction = anim.direction or "",
       file = anim.file or "",
       status = anim.status or "missing",
       last_result = anim.last_result or "",
@@ -393,6 +398,7 @@ function blueprint.writeBlueprintSchema(sprite, schema)
   props.character_name = normalized.character_name
   props.body_parts = writePartsToProperties(normalized.body_parts)
   props.variants = writeVariantsToProperties(normalized.variants)
+  props.directions = cleanArray(normalized.directions or {})
   props.animations = writeAnimationsToProperties(normalized.animations)
 
   if sprite.filename and sprite.filename ~= "" and app.fs.isFile(sprite.filename) then
@@ -414,6 +420,7 @@ function blueprint.readAnimationData(sprite)
     blueprint_path = props.blueprint_path or "",
     character_name = props.character_name or "",
     animation_name = props.animation_name or "",
+    animation_direction = props.animation_direction or "",
     cached_schema = nil,
     last_validated = props.last_validated or 0,
     validation_result = props.validation_result or "unknown",
@@ -458,6 +465,7 @@ function blueprint.writeAnimationData(sprite, data)
   props.blueprint_path = data.blueprint_path or ""
   props.character_name = data.character_name or ""
   props.animation_name = data.animation_name or ""
+  props.animation_direction = data.animation_direction or ""
   props.cached_schema = cachedSchema
   props.last_validated = data.last_validated or 0
   props.validation_result = data.validation_result or "unknown"
@@ -1085,7 +1093,7 @@ function blueprint.showCreateFromCurrentDialog()
   app.alert("Blueprint created from current sprite: " .. charName)
 end
 
-function blueprint.createNextAnimation(bpPath, targetAnimName)
+function blueprint.createNextAnimation(bpPath, targetAnimName, targetDirection)
   if not bpPath or bpPath == "" then return nil end
   if not app.fs.isFile(bpPath) then return nil end
 
@@ -1101,7 +1109,7 @@ function blueprint.createNextAnimation(bpPath, targetAnimName)
   local nextAnim = nil
   if targetAnimName then
     for _, anim in ipairs(schema.animations or {}) do
-      if anim.name == targetAnimName then
+      if anim.name == targetAnimName and (not targetDirection or anim.direction == targetDirection) then
         nextAnim = anim
         break
       end
@@ -1126,8 +1134,9 @@ function blueprint.createNextAnimation(bpPath, targetAnimName)
     return nil
   end
 
+  local direction = nextAnim.direction or ""
   local charName = schema.character_name or "character"
-  local fileName = charName .. "_" .. animName .. ".ase"
+  local fileName = charName .. "_" .. animName .. (direction ~= "" and ("_" .. direction) or "") .. ".ase"
   local bpDir = app.fs.filePath(bpPath)
   local savePath = app.fs.joinPath(bpDir, fileName)
 
@@ -1189,9 +1198,11 @@ function blueprint.createNextAnimation(bpPath, targetAnimName)
     blueprint_path = bpPath,
     character_name = charName,
     animation_name = animName,
+    animation_direction = direction,
     cached_schema = {
       body_parts = schema.body_parts,
       variants = schema.variants,
+      directions = schema.directions,
       animations = schema.animations,
       cache_timestamp = os.time(),
     },
@@ -1484,8 +1495,9 @@ function blueprint.syncCompletionToBlueprint(animSprite, bpSprite)
   if not schema then return false end
 
   local changed = false
+  local animDir = data.animation_direction or ""
   for i, anim in ipairs(schema.animations or {}) do
-    if anim.name == data.animation_name then
+    if anim.name == data.animation_name and (anim.direction or "") == animDir then
       local newStatus = allDone and "valid" or "started"
       if anim.status ~= newStatus or anim.done_count ~= doneCount or anim.total_count ~= totalCount then
         schema.animations[i].status = newStatus

@@ -18,6 +18,7 @@ Any new dialog type MUST be added to this registry.
 |---|---|---|---|---|
 | create-step1 | Create Character | 360 | 420 | Lists rebuild on add/remove. Fixed height with scroll canvas for part/outfit/effect/animation lists. |
 | create-step2 | Step 2: {part} | 320 | 300 | Per-part outfit setup. Rebuilds on part switch. |
+| direction-setup | Direction Setup | 280 | auto | Preset dropdown + 8 direction checkboxes. Small, fixed content. |
 
 ## Modal: Blueprint Editor Hub + Sub-dialogs
 

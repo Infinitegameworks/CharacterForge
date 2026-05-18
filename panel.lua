@@ -207,7 +207,11 @@ local function refreshPanel()
   local bpPath = blueprintPathForAnimation(spr, data)
   blueprintMissing = bpPath and not app.fs.isFile(bpPath)
 
-  statusText = (data.character_name or "character") .. " / " .. (data.animation_name or "animation")
+  local animLabel = data.animation_name or "animation"
+  if data.animation_direction and data.animation_direction ~= "" then
+    animLabel = animLabel .. " [" .. data.animation_direction .. "]"
+  end
+  statusText = (data.character_name or "character") .. " / " .. animLabel
   if blueprintMissing then
     detailText = "Blueprint not found: " .. (data.blueprint_ref or "?")
   elseif lastValidation.result == "fail" then
@@ -301,7 +305,7 @@ local function drawProgressDot(gc, x, y, dotColor)
 end
 
 local function animRowKey(anim)
-  return tostring(anim.name or "") .. "|" .. tostring(anim.file or "")
+  return tostring(anim.name or "") .. "|" .. tostring(anim.direction or "") .. "|" .. tostring(anim.file or "")
 end
 
 local function variantRowKey(partId, slotId, variantId)
@@ -370,11 +374,16 @@ local function drawBlueprintProgressView(gc, schema)
         fillRect(gc, 8, sy - 2, 324, 14, Color{ r = 46, g = 46, b = 46, a = 255 })
       end
       drawProgressDot(gc, 12, sy + 1, dotColor)
-      drawText(gc, (anim.name or "unnamed") .. ": " .. label, 28, sy, utils.COLOR_TEXT)
+      local displayName = anim.name or "unnamed"
+      if anim.direction and anim.direction ~= "" then
+        displayName = displayName .. " [" .. anim.direction .. "]"
+      end
+      drawText(gc, displayName .. ": " .. label, 28, sy, utils.COLOR_TEXT)
       drawText(gc, fileExists and "open" or "create", 286, sy, hovered and utils.COLOR_TEXT or utils.COLOR_MUTED)
       animRowRects[#animRowRects + 1] = {
         key = rowKey,
         name = anim.name or "",
+        direction = anim.direction or "",
         file = anim.file or "",
         fileExists = fileExists,
         x = 8, y = sy - 2, w = 324, h = 16,
@@ -797,7 +806,7 @@ local function onAnimRowClick(rect)
   }
   if confirm == 1 then
     isRefreshingCache = true
-    local created, reason = blueprint.createNextAnimation(spr.filename, rect.name)
+    local created, reason = blueprint.createNextAnimation(spr.filename, rect.name, rect.direction)
     isRefreshingCache = false
     if created then
       connectSpriteEvents(app.activeSprite)
