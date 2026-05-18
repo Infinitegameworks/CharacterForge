@@ -553,6 +553,10 @@ function blueprintEditor._editParts(spr)
     if #partNames > 0 then
       local names = {}
       for _, part in ipairs(schema.body_parts or {}) do names[#names + 1] = part.name end
+      dlg:separator{ text = "Reorder" }
+      dlg:combobox{ id = "reorderPart", label = "Part:", options = names }
+      dlg:button{ id = "moveUpBtn", text = "Move Up", onclick = function() dlg:close() end }
+      dlg:button{ id = "moveDownBtn", text = "Move Down", onclick = function() dlg:close() end }
       dlg:separator{ text = "Rename" }
       dlg:combobox{ id = "renamePart", label = "Part:", options = names }
       dlg:entry{ id = "renamePartTo", label = "New Name:", text = "" }
@@ -566,7 +570,22 @@ function blueprintEditor._editParts(spr)
     dlg:button{ id = "back", text = "Back" }
     dlg:show()
 
-    if dlg.data.renameBtn then
+    if dlg.data.moveUpBtn or dlg.data.moveDownBtn then
+      local name = dlg.data.reorderPart
+      if name then
+        for i, part in ipairs(schema.body_parts or {}) do
+          if part.name == name then
+            local target = dlg.data.moveUpBtn and (i - 1) or (i + 1)
+            if target >= 1 and target <= #schema.body_parts then
+              schema.body_parts[i], schema.body_parts[target] = schema.body_parts[target], schema.body_parts[i]
+              for j, p in ipairs(schema.body_parts) do p.sort_order = j end
+              applyBlueprintSchema(spr, schema)
+            end
+            break
+          end
+        end
+      end
+    elseif dlg.data.renameBtn then
       local oldName = dlg.data.renamePart
       local newName = trim(dlg.data.renamePartTo)
       if oldName and newName ~= "" and oldName ~= newName then

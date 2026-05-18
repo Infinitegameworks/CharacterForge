@@ -14,7 +14,6 @@ local currentSprite = nil
 local cachedLayerHash = ""
 local debounceTimer = nil
 local isRefreshingCache = false
-local lastCheckedFilename = nil
 local lastValidation = nil
 local lastData = nil
 local lastSchema = nil
@@ -263,8 +262,6 @@ local function connectSpriteEvents(sprite)
   spriteLayerNameHandler = sprite.events:on("layername", onLayerName)
 end
 
-local function checkSchemaFreshness(spr)
-end
 
 local function onSiteChange()
   if isRefreshingCache then return end
@@ -285,7 +282,6 @@ local function onSiteChange()
     end
     if spr ~= currentSprite then
       connectSpriteEvents(spr)
-      if spr then checkSchemaFreshness(spr) end
     end
     refreshPanel()
   end)
@@ -1131,7 +1127,7 @@ function panel.open()
       lastValidation = nil
       lastData = nil
       lastSchema = nil
-      lastCheckedFilename = nil
+
       hoverAnimRowKey = nil
       hoverVariantRowKey = nil
     end
@@ -1443,12 +1439,8 @@ function panel.open()
     id = "btnRefresh",
     text = "Refresh",
     onclick = function()
-      lastCheckedFilename = nil
       local spr = app.activeSprite
-      if spr then
-        connectSpriteEvents(spr)
-        checkSchemaFreshness(spr)
-      end
+      if spr then connectSpriteEvents(spr) end
       refreshPanel()
     end
   }
