@@ -71,11 +71,18 @@ local function schemaSignature(schema)
 end
 
 local function blueprintPathForAnimation(sprite, data)
-  if not sprite or not data or not data.blueprint_ref or data.blueprint_ref == "" then return nil end
-  if not sprite.filename or sprite.filename == "" then return nil end
-  local dir = app.fs.filePath(sprite.filename)
-  if not dir or dir == "" then return nil end
-  return app.fs.joinPath(dir, data.blueprint_ref)
+  if not sprite or not data then return nil end
+  if sprite.filename and sprite.filename ~= "" and data.blueprint_ref and data.blueprint_ref ~= "" then
+    local dir = app.fs.filePath(sprite.filename)
+    if dir and dir ~= "" then
+      local path = app.fs.joinPath(dir, data.blueprint_ref)
+      if app.fs.isFile(path) then return path end
+    end
+  end
+  if data.blueprint_path and data.blueprint_path ~= "" and app.fs.isFile(data.blueprint_path) then
+    return data.blueprint_path
+  end
+  return nil
 end
 
 
@@ -101,8 +108,23 @@ local function updateLabels()
   end
   dlg:modify{ id = "btnSoloSlot", enabled = multiSlot }
   dlg:modify{ id = "btnHideSlot", enabled = multiSlot }
+
+  local spr = app.activeSprite
+  local viewingBlueprint = spr and blueprint.isBlueprint(spr)
+  local viewingAnimation = spr and blueprint.isAnimation(spr)
+  local viewingUnregistered = spr and not viewingBlueprint and not viewingAnimation
+
+  dlg:modify{ id = "btnEditBlueprint", visible = viewingBlueprint == true }
+  dlg:modify{ id = "btnNewAnimation", visible = viewingBlueprint == true }
+
   local hasBlueprint = lastData ~= nil and not blueprintMissing
-  dlg:modify{ id = "btnGoToBlueprint", enabled = hasBlueprint }
+  dlg:modify{ id = "btnGoToBlueprint", visible = viewingAnimation == true, enabled = hasBlueprint }
+  dlg:modify{ id = "btnRefreshSchema", visible = viewingAnimation == true, enabled = hasBlueprint }
+
+  dlg:modify{ id = "btnCreateBlueprint", visible = viewingUnregistered == true or not spr }
+  dlg:modify{ id = "btnFromCurrent", visible = viewingUnregistered == true }
+  dlg:modify{ id = "btnRegister", visible = viewingUnregistered == true }
+
   dlg:repaint()
 end
 
@@ -1037,6 +1059,25 @@ function panel.open()
   dlg:label{ id = "detailLabel", text = "" }
 
   dlg:button{
+    id = "btnEditBlueprint",
+    text = "Edit Blueprint",
+    onclick = function()
+      runAction(function()
+        if _blueprintEditorModule then _blueprintEditorModule.showEditDialog() end
+      end)
+    end
+  }
+  dlg:button{
+    id = "btnNewAnimation",
+    text = "New Animation",
+    onclick = function()
+      runAction(function()
+        if _blueprintModule then _blueprintModule.showNewAnimationDialog() end
+      end)
+    end
+  }
+
+  dlg:button{
     id = "btnGoToBlueprint",
     text = "Go to Blueprint",
     onclick = function()
@@ -1050,14 +1091,48 @@ function panel.open()
           app.open(bpPath)
           refreshPanel()
         else
-          app.alert("Blueprint file not found: " .. tostring(data.blueprint_ref or ""))
+          app.alert("Blueprint not found: " .. tostring(data.blueprint_ref or ""))
         end
       end)
       if not ok then app.alert("Error: " .. tostring(err)) end
     end
   }
+  dlg:button{
+    id = "btnRefreshSchema",
+    text = "Refresh from Blueprint",
+    onclick = function()
+      local ok, err = pcall(function()
+        local spr = app.activeSprite
+        if not spr then return end
+        local data = lastData
+        if not data then return end
+        local animPath = spr.filename
+        local bpPath = blueprintPathForAnimation(spr, data)
+        if not bpPath or not app.fs.isFile(bpPath) then
+          app.alert("Blueprint not found: " .. tostring(data.blueprint_ref or ""))
+          return
+        end
+        isRefreshingCache = true
+        app.open(bpPath)
+        local freshSchema = blueprint.readBlueprintSchema(app.activeSprite)
+        app.open(animPath)
+        isRefreshingCache = false
+        if freshSchema then
+          blueprint.cacheSchemaInAnimation(app.activeSprite, freshSchema)
+          app.alert("Schema refreshed from blueprint.")
+        else
+          app.alert("Could not read blueprint schema.")
+        end
+        connectSpriteEvents(app.activeSprite)
+        refreshPanel()
+      end)
+      if not ok then
+        isRefreshingCache = false
+        app.alert("Error: " .. tostring(err))
+      end
+    end
+  }
 
-  dlg:separator{ text = "Create" }
   dlg:button{
     id = "btnCreateBlueprint",
     text = "New Blueprint",
@@ -1073,24 +1148,6 @@ function panel.open()
     onclick = function()
       runAction(function()
         if _blueprintModule then _blueprintModule.showCreateFromCurrentDialog() end
-      end)
-    end
-  }
-  dlg:button{
-    id = "btnEditBlueprint",
-    text = "Edit Blueprint",
-    onclick = function()
-      runAction(function()
-        if _blueprintEditorModule then _blueprintEditorModule.showEditDialog() end
-      end)
-    end
-  }
-  dlg:button{
-    id = "btnNewAnimation",
-    text = "New Animation",
-    onclick = function()
-      runAction(function()
-        if _blueprintModule then _blueprintModule.showNewAnimationDialog() end
       end)
     end
   }

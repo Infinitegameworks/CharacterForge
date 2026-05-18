@@ -407,6 +407,7 @@ function blueprint.readAnimationData(sprite)
     schema_version = props.schema_version or 1,
     type = "animation",
     blueprint_ref = props.blueprint_ref or "",
+    blueprint_path = props.blueprint_path or "",
     character_name = props.character_name or "",
     animation_name = props.animation_name or "",
     cached_schema = nil,
@@ -450,6 +451,7 @@ function blueprint.writeAnimationData(sprite, data)
   props.schema_version = SCHEMA_VERSION
   props.type = "animation"
   props.blueprint_ref = data.blueprint_ref or ""
+  props.blueprint_path = data.blueprint_path or ""
   props.character_name = data.character_name or ""
   props.animation_name = data.animation_name or ""
   props.cached_schema = cachedSchema
@@ -858,13 +860,13 @@ function blueprint.showNewAnimationDialog()
   for i, anim in ipairs(animations) do
     if anim.name == animName then
       animations[i].file = fileName
-      animations[i].status = "valid"
+      animations[i].status = "started"
       found = true
       break
     end
   end
   if not found then
-    animations[#animations + 1] = { name = animName, file = fileName, status = "valid" }
+    animations[#animations + 1] = { name = animName, file = fileName, status = "started" }
   end
   schema.animations = animations
   blueprint.writeBlueprintSchema(bpSprite, schema)
@@ -894,6 +896,7 @@ function blueprint.showNewAnimationDialog()
 
   blueprint.writeAnimationData(newSprite, {
     blueprint_ref = app.fs.fileName(bpPath),
+    blueprint_path = bpPath,
     character_name = charName,
     animation_name = animName,
     cached_schema = {
@@ -915,16 +918,16 @@ end
 function blueprint.showRegisterDialog()
   local spr = app.activeSprite
   if not spr then
-    app.alert("No active sprite to register.")
+    app.alert("No active sprite to link.")
     return
   end
 
   if blueprint.isAnimation(spr) then
     local data = blueprint.readAnimationData(spr)
     local confirm = app.alert{
-      title = "Already Registered",
-      text = "This file is already registered to '" .. (data.character_name or "unknown") .. "'. Re-register?",
-      buttons = { "Re-register", "Cancel" },
+      title = "Already Linked",
+      text = "This file is already linked to '" .. (data.character_name or "unknown") .. "'. Link again?",
+      buttons = { "Re-link", "Cancel" },
     }
     if confirm ~= 1 then return end
   end
@@ -937,7 +940,7 @@ function blueprint.showRegisterDialog()
 
   local dlg, byLabel = blueprintDialog("Link Animation to Character")
   dlg:entry{ id = "animName", label = "Animation:", text = defaultAnimName }
-  dlg:button{ id = "register", text = "Register" }
+  dlg:button{ id = "register", text = "Link" }
   dlg:button{ id = "cancel", text = "Cancel" }
   dlg:show()
 
@@ -979,11 +982,11 @@ function blueprint.showRegisterDialog()
     if repair.created > 0 then
       msg = msg .. "\nCreated " .. tostring(repair.created) .. " missing group(s) before checking."
     end
-    msg = msg .. "\nRegister anyway?"
+    msg = msg .. "\nLink anyway?"
     local proceed = app.alert{
       title = "Status Issues",
       text = msg,
-      buttons = { "Register", "Cancel" },
+      buttons = { "Link", "Cancel" },
     }
     if proceed ~= 1 then
       if shouldCloseBlueprint then safeCloseSprite(bpSprite) end
@@ -995,6 +998,7 @@ function blueprint.showRegisterDialog()
   local bpFileName = app.fs.fileName(bpPath)
   blueprint.writeAnimationData(spr, {
     blueprint_ref = bpFileName,
+    blueprint_path = bpPath,
     character_name = charName,
     animation_name = animName,
     cached_schema = {
@@ -1014,7 +1018,8 @@ function blueprint.showRegisterDialog()
   for i, anim in ipairs(animations) do
     if anim.name == animName then
       animations[i].file = sprFileName
-      animations[i].status = result.result == "fail" and "invalid" or "valid"
+      local allDone = result.result ~= "fail" and blueprint.checkAllVariantsDone(spr)
+      animations[i].status = result.result == "fail" and "invalid" or (allDone and "valid" or "started")
       found = true
       break
     end
@@ -1023,7 +1028,7 @@ function blueprint.showRegisterDialog()
     animations[#animations + 1] = {
       name = animName,
       file = sprFileName,
-      status = result.result == "fail" and "invalid" or "valid",
+      status = result.result == "fail" and "invalid" or (blueprint.checkAllVariantsDone(spr) and "valid" or "started"),
     }
   end
   schema.animations = animations
@@ -1122,6 +1127,18 @@ function blueprint.createNextAnimation(bpPath, targetAnimName)
   local bpDir = app.fs.filePath(bpPath)
   local savePath = app.fs.joinPath(bpDir, fileName)
 
+  if app.fs.isFile(savePath) then
+    local overwrite = app.alert{
+      title = "Animation Exists",
+      text = "A file named '" .. fileName .. "' already exists. Overwrite it?",
+      buttons = { "Overwrite", "Cancel" },
+    }
+    if overwrite ~= 1 then
+      if shouldCloseBlueprint then safeCloseSprite(bpSprite) end
+      return nil, "cancelled"
+    end
+  end
+
   local bpWidth = bpSprite.width
   local bpHeight = bpSprite.height
   local bpColorMode = bpSprite.colorMode
@@ -1132,7 +1149,7 @@ function blueprint.createNextAnimation(bpPath, targetAnimName)
   for i, anim in ipairs(animations) do
     if anim.name == animName then
       animations[i].file = fileName
-      animations[i].status = "valid"
+      animations[i].status = "started"
       break
     end
   end
@@ -1165,6 +1182,7 @@ function blueprint.createNextAnimation(bpPath, targetAnimName)
 
   blueprint.writeAnimationData(newSprite, {
     blueprint_ref = app.fs.fileName(bpPath),
+    blueprint_path = bpPath,
     character_name = charName,
     animation_name = animName,
     cached_schema = {

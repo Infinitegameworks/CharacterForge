@@ -1,17 +1,17 @@
 # CharacterForge
 
-Blueprint-driven layer management for Aseprite. Define a character's body parts, outfit variants, and animations in a single blueprint file, then generate animation files with the correct layer structure already in place.
+Aseprite extension for managing layered character animation pipelines. Define a character's body parts, outfits, and animations in a single blueprint file, then generate animation files with the correct layer structure already in place.
 
 ## How It Works
 
-A **blueprint** is an `.ase` file that defines your character's structure:
+A **blueprint** is an `.ase` file that stores the character definition:
 
-- **Parts** -- top-level body regions (head, torso, legs, etc.)
-- **Slots** -- equipment positions within a part (default, or named slots like "armor", "accessory")
-- **Variants** -- visual options per slot (base, plus any outfits or state effects)
-- **Animations** -- the list of animations the character needs (idle, walk, run, etc.)
+- **Parts** -- body regions (head, torso, arms, legs, hair, etc.)
+- **Outfits** -- per-part visual alternatives (armor on torso, ponytail on hair, etc.)
+- **Effects** -- conditional overlays that apply to specific animations (damaged, powered-up)
+- **Animations** -- the list of animation files the character needs (idle, walk, run, etc.)
 
-When you create a new animation from a blueprint, CharacterForge generates an `.ase` file with the full layer group hierarchy pre-built. As you draw, the panel validates your layer structure against the blueprint in real time.
+Outfits and effects are configured **per-part** -- hair can have unique hairstyle variants while torso has armor variants. A bulk-add option applies outfits across all parts when that makes sense.
 
 ## Requirements
 
@@ -22,92 +22,105 @@ Aseprite v1.3-rc3 or later (API version 23+).
 1. Clone or download this repo
 2. Create a junction link (or copy) into your Aseprite extensions directory:
 
-```
+```powershell
 # Windows
 mklink /J "%APPDATA%\Aseprite\extensions\character-forge" C:\Dev\CharacterForge
+```
 
+```bash
 # macOS / Linux
 ln -s /path/to/CharacterForge ~/Library/Application\ Support/Aseprite/extensions/character-forge
 ```
 
 3. Restart Aseprite
 
-The extension registers commands under **Sprite > Properties** in the menu bar.
+Commands register under **Sprite > Properties** in the menu bar.
 
-## Usage
+## Workflow
 
-### Create a Blueprint
+### 1. Create a Blueprint
 
-**Sprite > CharacterForge: New Blueprint** opens a dialog with preset templates (Humanoid, Simple Humanoid, Upper Body) or custom configuration. Enter your character name, body parts, outfit variants, state effects, and planned animations.
+**Sprite > CharacterForge: New Blueprint** opens a two-step setup:
 
-### Blueprint From Existing Sprite
+- **Step 1**: Pick a template (Humanoid, Simple Humanoid, Upper Body, or Custom). Set character name, parts, default outfits/effects, and planned animations.
+- **Step 2** (optional): Per-part customization. Select each part from a dropdown and add/remove outfits and effects specific to that part. "Create With Defaults" skips this step.
 
-**Sprite > CharacterForge: Blueprint From Current Sprite** infers a schema from an existing layered sprite. Top-level groups become parts, nested groups become slots and variants.
+### 2. Open the Panel
 
-### Create Animations
+**Sprite > CharacterForge** opens the floating panel. The panel adapts to what you're viewing:
 
-**Sprite > CharacterForge: New Animation** generates a new `.ase` file from a blueprint with the correct layer hierarchy. The blueprint tracks which animations exist and which are still missing.
+**When viewing a blueprint:**
+- Animation progress list -- click any row to open an existing animation or create a missing one
+- Edit Blueprint button -- opens the hub editor
+- New Animation button -- manual creation dialog
 
-### Link Existing Animations
+**When viewing an animation:**
+- Variant checklist -- shows every part and variant with done/not-done status
+- Click any variant row to toggle it as done
+- Progress counter (e.g., "5/12 variants done")
+- Go to Blueprint button -- opens the linked blueprint
+- Refresh from Blueprint button -- re-caches the schema if the blueprint changed
 
-**Sprite > CharacterForge: Link Animation** registers an existing sprite as an animation for a character. CharacterForge validates the layer structure and caches the schema.
+**When viewing an unregistered sprite:**
+- New Blueprint, Blueprint From Current, Link Animation buttons
 
-### Panel
+### 3. Draw and Track Progress
 
-**Sprite > CharacterForge** opens a dockable panel that shows:
+As you draw each animation:
+- The panel shows per-part variant status with frame counts
+- Click variants to mark them done when you're satisfied with the art
+- When all non-skipped variants are done, the blueprint shows the animation as "complete"
+- Mouse wheel scrolls the panel when content overflows; scrollbar is draggable
 
-- **Blueprint view** -- animation progress (started, complete, not created) with a "Start Next" button
-- **Animation view** -- per-part validation status with frame counts and variant completeness
-- **Slot filter chips** -- click to solo/hide specific equipment slots
-- **View controls** -- solo part, solo outfit, show all managed layers
+### 4. Edit the Blueprint
 
-### Strict Save
+**Edit Blueprint** opens a hub with focused action dialogs:
 
-When save mode is set to "block" (default), CharacterForge prevents saving animation files that have structural errors. Toggle between strict and warn-only mode via the Settings dialog or **Sprite > CharacterForge: Toggle Strict Save**.
+- **Edit Parts** -- add/remove body parts, see current part summary
+- **Edit Outfits / Effects** -- select a part from a dropdown, add/remove outfits and effects for that specific part. Bulk-add option applies to all parts at once.
+- **Edit Animations** -- add/remove planned animations
+
+If the blueprint structure changes and animations already exist, a warning reminds you to refresh them.
+
+## Blueprint-Animation Coupling
+
+Animations store a reference to their blueprint (filename + absolute path fallback). The cached schema lets animations validate and display their checklist even when the blueprint isn't open.
+
+If the blueprint is renamed or moved, the fallback path resolves the link. Use **Link Animation** to re-establish a broken connection.
+
+If the blueprint's structure changes (parts or outfits added/removed), open each animation and click **Refresh from Blueprint** to update the cached schema.
+
+## Strict Save
+
+When save mode is "block" (default), CharacterForge prevents saving animation files that have structural errors (missing layers, frame count mismatches). Toggle between strict and warn-only mode via Settings or **CharacterForge: Toggle Strict Save**.
 
 ## Variants
 
-Every slot contains one or more **variants** -- different visual versions of the same body part. The **base** variant is always present and required. Additional variants are added on top.
-
 ### Outfits
 
-Outfits are permanent visual alternatives like armor, clothing, or equipment. When you create an animation, every outfit variant gets its own layer group under each part/slot, pre-matched to the base structure. The validator enforces that each outfit has the same number of drawn frames as the base variant in that slot.
+Visual alternatives configured per-part. Each part can have its own set -- hair might have ponytail/short/braids while torso has armor/casual. The base variant is always required. Frame counts must match the base.
 
 ### Effects
 
-Effects (type `state` internally) are conditional overlays that only apply to specific animations. When defining an effect, you set an `applies_to` list of animation names. When CharacterForge generates an animation file, it only includes effect variants whose `applies_to` list contains that animation's name. For example, a "damaged" effect that only appears in "hit" and "death" animations.
+Conditional overlays that only apply to specific animations via an `applies_to` filter. For example, a "damaged" effect that only appears in hit/death animations.
 
-### Intentionally Absent
+### Skipped (Intentionally Absent)
 
-Not every variant needs art in every slot. Mark a variant layer as **intentionally absent** (via Settings > Toggle Absent) to tell the validator to skip frame-count checks for that layer. For example, a helmet outfit doesn't need leg art.
-
-### Frame Matching
-
-The validator compares each variant's drawn frame count against the base variant in the same slot. A mismatch is an error. This catches missing frames early -- if base has 6 frames, every non-absent outfit and effect must also have exactly 6.
-
-### Solo and Visibility
-
-When working with many variants, use the view controls to focus:
-
-- **Solo Outfit** -- hides all variants except the selected one across all parts
-- **Solo Part** -- hides all parts except the one containing the active layer
-- **Show All** -- restores visibility on all managed layers
+Mark a variant as skipped via Settings > Toggle Absent. Skipped variants are excluded from frame-count validation. Useful when a variant doesn't apply to a specific part (e.g., helmet outfit doesn't need leg art).
 
 ## Schema
 
-Character data is stored in Aseprite's extension properties under the namespace `infinitegameworks/character-forge`. Blueprint files have `type: "blueprint"`, animation files have `type: "animation"` with a cached copy of the schema for offline validation.
-
-The schema uses a **Part > Slot > Variant** hierarchy with stable IDs. `normalizeSchema()` in `blueprint.lua` is the central normalization function -- all reads and writes go through it.
+Character data is stored in Aseprite extension properties under `infinitegameworks/character-forge`. The internal model uses a **Part > Slot > Variant** hierarchy with stable IDs. `normalizeSchema()` in `blueprint.lua` is the central normalization function.
 
 ## Files
 
 | File | Purpose |
 |---|---|
 | `plugin.lua` | Entry point, command registration, save-time validation hooks |
-| `blueprint.lua` | Schema CRUD, layer structure management, blueprint discovery |
-| `blueprint_editor.lua` | Create and edit blueprint dialogs |
-| `validator.lua` | Layer structure validation against schema |
-| `panel.lua` | Dockable panel UI with canvas rendering |
+| `blueprint.lua` | Schema CRUD, layer structure, animation creation, completion sync |
+| `blueprint_editor.lua` | Two-step create dialog, hub-style edit dialog |
+| `validator.lua` | Layer structure and frame-count validation |
+| `panel.lua` | Floating panel with context-sensitive controls and scrollable canvas |
 | `utils.lua` | Shared color constants |
 | `__pref.lua` | Preference initialization |
 

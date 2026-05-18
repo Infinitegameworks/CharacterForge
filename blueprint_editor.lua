@@ -284,6 +284,14 @@ end
 
 -- ─── Edit: Hub ──────────────────────────────────────────
 
+local function countLinkedAnimations(schema)
+  local count = 0
+  for _, anim in ipairs(schema.animations or {}) do
+    if anim.file and anim.file ~= "" then count = count + 1 end
+  end
+  return count
+end
+
 function blueprintEditor.showEditDialog()
   local spr = app.activeSprite
   if not spr or not blueprint.isBlueprint(spr) then
@@ -291,10 +299,10 @@ function blueprintEditor.showEditDialog()
     return
   end
 
-  local schema = blueprint.readBlueprintSchema(spr)
-  local charName = schema.character_name or "Blueprint"
-  local partCount = #(schema.body_parts or {})
-  local animCount = #(schema.animations or {})
+  local schemaBefore = blueprint.readBlueprintSchema(spr)
+  local charName = schemaBefore.character_name or "Blueprint"
+  local partCount = #(schemaBefore.body_parts or {})
+  local animCount = #(schemaBefore.animations or {})
 
   local dlg = Dialog{ title = "Edit: " .. charName .. " (" .. partCount .. " parts, " .. animCount .. " anims)" }
   dlg:button{ id = "editParts", text = "Edit Parts", onclick = function() dlg:close() end }
@@ -309,6 +317,30 @@ function blueprintEditor.showEditDialog()
     blueprintEditor._editOutfits(spr)
   elseif dlg.data.editAnimations then
     blueprintEditor._editAnimations(spr)
+  end
+
+  local schemaAfter = blueprint.readBlueprintSchema(spr)
+  if schemaAfter then
+    local linked = countLinkedAnimations(schemaAfter)
+    if linked > 0 then
+      local beforeSig = ""
+      local afterSig = ""
+      for _, part in ipairs(schemaBefore.body_parts or {}) do
+        beforeSig = beforeSig .. part.name .. ":"
+        for _, slot in ipairs(part.slots or {}) do
+          for _, v in ipairs(slot.variants or {}) do beforeSig = beforeSig .. v.name .. "," end
+        end
+      end
+      for _, part in ipairs(schemaAfter.body_parts or {}) do
+        afterSig = afterSig .. part.name .. ":"
+        for _, slot in ipairs(part.slots or {}) do
+          for _, v in ipairs(slot.variants or {}) do afterSig = afterSig .. v.name .. "," end
+        end
+      end
+      if beforeSig ~= afterSig then
+        app.alert(tostring(linked) .. " animation(s) use this blueprint. Open each and use 'Refresh from Blueprint' to update their structure.")
+      end
+    end
   end
 end
 
