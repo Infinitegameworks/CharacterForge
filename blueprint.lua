@@ -1226,6 +1226,14 @@ local function collectFrameSet(layer, frames)
   return frames
 end
 
+local function countFrames(layer)
+  if not layer then return 0 end
+  local frames = collectFrameSet(layer, {})
+  local count = 0
+  for _ in pairs(frames) do count = count + 1 end
+  return count
+end
+
 local function firstImageLayer(sprite, parent)
   if not parent then return nil end
   if not parent.isGroup then return parent end
@@ -1441,19 +1449,24 @@ function blueprint.checkAllVariantsDone(sprite)
     local partLayer = blueprint.findLayerByIdOrName(sprite.layers, "part", part.id, part.name)
     if not partLayer then goto nextPart end
     for _, slot in ipairs(part.slots or {}) do
+      local baseVariant = slot.variants and slot.variants[1]
+      for _, v in ipairs(slot.variants or {}) do
+        if v.name == "base" or v.id == "variant_base" then baseVariant = v; break end
+      end
+      local baseLayer = baseVariant and blueprint.findVariantLayer(partLayer, slot, baseVariant)
+      local baseFrames = countFrames(baseLayer)
+
       for _, variant in ipairs(slot.variants or {}) do
         local vl = blueprint.findVariantLayer(partLayer, slot, variant)
         if vl then
           local props = vl.properties(PK)
-          if props and props.intentionally_absent then
-            -- skip
-          else
-            total = total + 1
-            if props and props.marked_done then done = done + 1 end
-          end
-        else
-          total = total + 1
+          if props and props.intentionally_absent then goto nextVar end
         end
+        total = total + 1
+        if vl and baseFrames > 0 and countFrames(vl) == baseFrames then
+          done = done + 1
+        end
+        ::nextVar::
       end
     end
     ::nextPart::

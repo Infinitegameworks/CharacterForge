@@ -70,13 +70,31 @@ local function schemaSignature(schema)
   return table.concat(parts, "|")
 end
 
+local function findAnimFile(bpDir, fileName)
+  if not bpDir or not fileName or fileName == "" then return false end
+  if app.fs.isFile(app.fs.joinPath(bpDir, fileName)) then return true end
+  for _, sub in ipairs(app.fs.listFiles(bpDir) or {}) do
+    local subPath = app.fs.joinPath(bpDir, sub)
+    if app.fs.isDirectory(subPath) then
+      if app.fs.isFile(app.fs.joinPath(subPath, fileName)) then return true end
+    end
+  end
+  return false
+end
+
 local function blueprintPathForAnimation(sprite, data)
   if not sprite or not data then return nil end
-  if sprite.filename and sprite.filename ~= "" and data.blueprint_ref and data.blueprint_ref ~= "" then
+  local ref = data.blueprint_ref or ""
+  if sprite.filename and sprite.filename ~= "" and ref ~= "" then
     local dir = app.fs.filePath(sprite.filename)
     if dir and dir ~= "" then
-      local path = app.fs.joinPath(dir, data.blueprint_ref)
+      local path = app.fs.joinPath(dir, ref)
       if app.fs.isFile(path) then return path end
+      local parent = app.fs.filePath(dir:sub(1, -2))
+      if parent and parent ~= "" and parent ~= dir then
+        local parentPath = app.fs.joinPath(parent, ref)
+        if app.fs.isFile(parentPath) then return parentPath end
+      end
     end
   end
   if data.blueprint_path and data.blueprint_path ~= "" and app.fs.isFile(data.blueprint_path) then
@@ -308,7 +326,7 @@ local function drawBlueprintProgressView(gc, schema)
   local started = 0
   local complete = 0
   for _, anim in ipairs(anims) do
-    local fileOnDisk = bpDir and anim.file and anim.file ~= "" and app.fs.isFile(app.fs.joinPath(bpDir, anim.file))
+    local fileOnDisk = bpDir and anim.file and anim.file ~= "" and findAnimFile(bpDir, anim.file)
     if fileOnDisk then
       started = started + 1
       if anim.status == "valid" then complete = complete + 1 end
@@ -371,24 +389,16 @@ local function readVariantDoneMap(spr, layerStatus)
   local doneMap = {}
   local total = 0
   local done = 0
-  if not spr then return doneMap, total, done end
 
   for _, part in ipairs(layerStatus) do
-    local partLayer = blueprint.findLayerByIdOrName(spr.layers, "part", part.id, part.part)
-    if not partLayer then goto nextPart end
     for _, slot in ipairs(part.slots or {}) do
+      local baseFrames = slot.base_frames or 0
       for _, variant in ipairs(slot.variants or {}) do
         if variant.absent then goto nextVariant end
         total = total + 1
-        local slotObj = { id = slot.id, name = slot.slot }
-        local variantObj = { id = variant.id, name = variant.variant }
-        local vl = blueprint.findVariantLayer(partLayer, slotObj, variantObj)
-        if vl then
-          local props = vl.properties(blueprint.PK)
-          if props and props.marked_done then
-            doneMap[part.id .. "/" .. slot.id .. "/" .. variant.id] = true
-            done = done + 1
-          end
+        if baseFrames > 0 and (variant.frames or 0) == baseFrames then
+          doneMap[part.id .. "/" .. slot.id .. "/" .. variant.id] = true
+          done = done + 1
         end
         ::nextVariant::
       end
@@ -810,12 +820,7 @@ local function onVariantRowClick(rect)
   local variantLayer = blueprint.findVariantLayer(partLayer, slotObj, variantObj)
   if not variantLayer then return end
 
-  app.transaction(function()
-    local props = variantLayer.properties(blueprint.PK)
-    props.marked_done = not props.marked_done
-  end)
-
-  refreshPanel()
+  app.activeLayer = variantLayer
 end
 
 local function scrollbarHitAndDrag(y)

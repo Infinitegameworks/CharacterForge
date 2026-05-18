@@ -465,6 +465,10 @@ function blueprintEditor._editParts(spr)
     if #partNames > 0 then
       local names = {}
       for _, part in ipairs(schema.body_parts or {}) do names[#names + 1] = part.name end
+      dlg:separator{ text = "Rename" }
+      dlg:combobox{ id = "renamePart", label = "Part:", options = names }
+      dlg:entry{ id = "renamePartTo", label = "New Name:", text = "" }
+      dlg:button{ id = "renameBtn", text = "Rename Part", onclick = function() dlg:close() end }
       dlg:separator{ text = "Remove" }
       dlg:combobox{ id = "removePart", label = "Part:", options = names }
       dlg:button{ id = "removeBtn", text = "Remove Part", onclick = function() dlg:close() end }
@@ -474,7 +478,17 @@ function blueprintEditor._editParts(spr)
     dlg:button{ id = "back", text = "Back" }
     dlg:show()
 
-    if dlg.data.addBtn then
+    if dlg.data.renameBtn then
+      local oldName = dlg.data.renamePart
+      local newName = trim(dlg.data.renamePartTo)
+      if oldName and newName ~= "" and oldName ~= newName then
+        local part = findNamedItem(schema.body_parts, oldName)
+        if part and not hasNamedItem(schema.body_parts, newName) then
+          part.name = newName
+          applyBlueprintSchema(spr, schema)
+        end
+      end
+    elseif dlg.data.addBtn then
       for _, name in ipairs(parseList(dlg.data.newParts, "")) do
         if not hasNamedItem(schema.body_parts, name) then
           schema.body_parts[#schema.body_parts + 1] = {
@@ -538,6 +552,11 @@ function blueprintEditor._editOutfits(spr)
     dlg:button{ id = "addBtn", text = "Add to " .. selectedPartName, onclick = function() dlg:close() end }
 
     if #removeOpts > 0 then
+      dlg:separator{ text = "Rename" }
+      dlg:combobox{ id = "renameChoice", label = "Item:", options = removeOpts }
+      dlg:entry{ id = "renameToName", label = "New Name:", text = "" }
+      dlg:button{ id = "renameBtn", text = "Rename", onclick = function() dlg:close() end }
+      dlg:separator{ text = "Remove" }
       dlg:combobox{ id = "removeChoice", label = "Remove:", options = removeOpts }
       dlg:button{ id = "removeBtn", text = "Remove from " .. selectedPartName, onclick = function() dlg:close() end }
     end
@@ -564,6 +583,18 @@ function blueprintEditor._editOutfits(spr)
           end
         end
         applyBlueprintSchema(spr, schema)
+      end
+    elseif dlg.data.renameBtn then
+      if part then
+        local oldName = dlg.data.renameChoice
+        local newName = trim(dlg.data.renameToName)
+        if oldName and newName ~= "" and oldName ~= newName and newName ~= "base" then
+          for _, slot in ipairs(part.slots or {}) do
+            local v = findNamedItem(slot.variants, oldName)
+            if v and not hasNamedItem(slot.variants, newName) then v.name = newName end
+          end
+          applyBlueprintSchema(spr, schema)
+        end
       end
     elseif dlg.data.removeBtn then
       if part then
@@ -618,6 +649,10 @@ function blueprintEditor._editAnimations(spr)
     dlg:button{ id = "addBtn", text = "Add Animation(s)", onclick = function() dlg:close() end }
 
     if #animNames > 0 then
+      dlg:separator{ text = "Rename" }
+      dlg:combobox{ id = "renameAnim", label = "Animation:", options = animNames }
+      dlg:entry{ id = "renameAnimTo", label = "New Name:", text = "" }
+      dlg:button{ id = "renameBtn", text = "Rename Animation", onclick = function() dlg:close() end }
       dlg:separator{ text = "Remove" }
       dlg:combobox{ id = "removeAnim", label = "Animation:", options = animNames }
       dlg:button{ id = "removeBtn", text = "Remove Animation", onclick = function() dlg:close() end }
@@ -634,6 +669,16 @@ function blueprintEditor._editAnimations(spr)
         end
       end
       applyBlueprintSchema(spr, schema)
+    elseif dlg.data.renameBtn then
+      local oldName = dlg.data.renameAnim
+      local newName = trim(dlg.data.renameAnimTo)
+      if oldName and newName ~= "" and oldName ~= newName then
+        local anim = findNamedItem(schema.animations, oldName)
+        if anim and not hasNamedItem(schema.animations, newName) then
+          anim.name = newName
+          applyBlueprintSchema(spr, schema)
+        end
+      end
     elseif dlg.data.removeBtn then
       local name = dlg.data.removeAnim
       if name and name ~= "" then
