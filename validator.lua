@@ -246,7 +246,7 @@ function validator.validateUnexpectedLayers(sprite, schema, warnings)
   end
 
   for _, layer in ipairs(sprite.layers or {}) do
-    if layer.isGroup and layer.name ~= "Reference" then
+    if layer.isGroup and layer.name ~= "Reference" and layer.name ~= "Hitbox" then
       local _, id = blueprint.getLayerIdentity(layer)
       if not expectedParts[id] and not expectedParts[layer.name] then
         addIssue(warnings, "Unexpected top-level group '" .. layer.name .. "'")

@@ -217,6 +217,7 @@ function blueprint.normalizeSchema(schema)
     body_parts = bodyParts,
     variants = globalVariants,
     directions = directions,
+    include_hitbox = schema.include_hitbox and true or false,
     animations = animations,
   }
 end
@@ -401,6 +402,7 @@ function blueprint.writeBlueprintSchema(sprite, schema)
   props.body_parts = writePartsToProperties(normalized.body_parts)
   props.variants = writeVariantsToProperties(normalized.variants)
   props.directions = cleanArray(normalized.directions or {})
+  props.include_hitbox = normalized.include_hitbox and true or false
   props.animations = writeAnimationsToProperties(normalized.animations)
 
   if sprite.filename and sprite.filename ~= "" and app.fs.isFile(sprite.filename) then
@@ -908,6 +910,12 @@ function blueprint.showNewAnimationDialog()
     newSprite.layers[1].name = "Reference"
   end
 
+  if schema.include_hitbox then
+    local hitboxGroup = newSprite:newGroup()
+    hitboxGroup.name = "Hitbox"
+    blueprint.setLayerIdentity(hitboxGroup, "hitbox", "hitbox")
+  end
+
   blueprint.writeAnimationData(newSprite, {
     blueprint_ref = app.fs.fileName(bpPath),
     blueprint_path = bpPath,
@@ -1195,6 +1203,12 @@ function blueprint.createNextAnimation(bpPath, targetAnimName, targetDirection)
     newSprite.layers[1].name = "Reference"
   end
 
+  if schema.include_hitbox then
+    local hitboxGroup = newSprite:newGroup()
+    hitboxGroup.name = "Hitbox"
+    blueprint.setLayerIdentity(hitboxGroup, "hitbox", "hitbox")
+  end
+
   blueprint.writeAnimationData(newSprite, {
     blueprint_ref = app.fs.fileName(bpPath),
     blueprint_path = bpPath,
@@ -1205,6 +1219,7 @@ function blueprint.createNextAnimation(bpPath, targetAnimName, targetDirection)
       body_parts = schema.body_parts,
       variants = schema.variants,
       directions = schema.directions,
+      include_hitbox = schema.include_hitbox,
       animations = schema.animations,
       cache_timestamp = os.time(),
     },

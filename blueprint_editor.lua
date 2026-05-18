@@ -213,6 +213,7 @@ function blueprintEditor.showCreateDialog()
   local anims = parseList(TEMPLATE_ANIMATIONS, "")
   local directions = {}
   local useDirections = false
+  local includeHitbox = false
   local saveDir = ""
 
   while true do
@@ -267,6 +268,8 @@ function blueprintEditor.showCreateDialog()
       dlg:button{ id = "removeAnimBtn", text = "Remove Animation", onclick = function() dlg:close() end }
     end
 
+    dlg:separator{ text = "Options" }
+    dlg:check{ id = "includeHitbox", label = "Include Hitbox Layer", selected = includeHitbox }
     dlg:separator{ text = "Directions" }
     dlg:check{ id = "useDirections", label = "Include Directions", selected = useDirections }
     if useDirections and #directions > 0 then
@@ -284,6 +287,7 @@ function blueprintEditor.showCreateDialog()
     charName = trim(dlg.data.characterName or charName)
     saveDir = dlg.data.saveDir or saveDir
     useDirections = dlg.data.useDirections or false
+    includeHitbox = dlg.data.includeHitbox or false
 
     if dlg.data.setupDirsBtn then
       directions = showDirectionSetup(directions)
@@ -341,9 +345,9 @@ function blueprintEditor.showCreateDialog()
         local finalDirs = useDirections and directions or {}
         local animText = table.concat(anims, ", ")
         if dlg.data.next then
-          blueprintEditor._showStep2(charName, bodyParts, animText, saveDir, finalDirs)
+          blueprintEditor._showStep2(charName, bodyParts, animText, saveDir, finalDirs, includeHitbox)
         else
-          blueprintEditor._finishCreate(charName, bodyParts, animText, saveDir, finalDirs)
+          blueprintEditor._finishCreate(charName, bodyParts, animText, saveDir, finalDirs, includeHitbox)
         end
         return
       end
@@ -355,7 +359,7 @@ end
 
 -- ─── Create: Step 2 (per-part, rebuilds on every action) ─
 
-function blueprintEditor._showStep2(charName, bodyParts, animText, saveDir, directions)
+function blueprintEditor._showStep2(charName, bodyParts, animText, saveDir, directions, includeHitbox)
   local selectedName = bodyParts[1] and bodyParts[1].name or ""
 
   while true do
@@ -417,7 +421,7 @@ function blueprintEditor._showStep2(charName, bodyParts, animText, saveDir, dire
     dlg:show()
 
     if dlg.data.create then
-      blueprintEditor._finishCreate(charName, bodyParts, animText, saveDir, directions)
+      blueprintEditor._finishCreate(charName, bodyParts, animText, saveDir, directions, includeHitbox)
       return
     elseif dlg.data.back then
       blueprintEditor.showCreateDialog()
@@ -428,7 +432,7 @@ function blueprintEditor._showStep2(charName, bodyParts, animText, saveDir, dire
   end
 end
 
-function blueprintEditor._finishCreate(charName, bodyParts, animText, saveDir, directions)
+function blueprintEditor._finishCreate(charName, bodyParts, animText, saveDir, directions, includeHitbox)
   directions = directions or {}
   local animNames = parseList(animText, "")
   local animations = {}
@@ -448,6 +452,7 @@ function blueprintEditor._finishCreate(charName, bodyParts, animText, saveDir, d
     character_name = charName,
     body_parts = bodyParts,
     directions = directions,
+    include_hitbox = includeHitbox and true or false,
     animations = animations,
   })
 
