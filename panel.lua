@@ -110,7 +110,9 @@ local function refreshPanel()
   if not dlg then return end
 
   local spr = app.activeSprite
-  if spr ~= currentSprite then
+  local wasBlueprint = currentSprite and blueprint.isBlueprint(currentSprite)
+  local isNowBlueprint = spr and blueprint.isBlueprint(spr)
+  if spr ~= currentSprite or wasBlueprint ~= isNowBlueprint then
     scrollOffset = 0
     hoverAnimRowKey = nil
     hoverVariantRowKey = nil
