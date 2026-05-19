@@ -264,7 +264,10 @@ end
 
 
 local function onSiteChange()
-  if isRefreshingCache then return end
+  log("onSiteChange isRefreshingCache=" .. tostring(isRefreshingCache)
+    .. " active=" .. tostring(app.activeSprite and app.activeSprite.filename or "nil")
+    .. " current=" .. tostring(currentSprite and currentSprite.filename or "nil"))
+  if isRefreshingCache then log("  BLOCKED"); return end
   local ok, err = pcall(function()
     local spr = app.activeSprite
     if currentSprite and spr then
@@ -274,7 +277,9 @@ local function onSiteChange()
           if data and data.blueprint_ref and data.blueprint_ref ~= "" then
             local bpName = app.fs.fileName(spr.filename or "")
             if bpName == data.blueprint_ref then
+              log("  syncing completion to blueprint")
               blueprint.syncCompletionToBlueprint(currentSprite, spr)
+              log("  sync done, active=" .. tostring(app.activeSprite and app.activeSprite.filename or "nil"))
             end
           end
         end
@@ -1150,6 +1155,7 @@ function panel.open()
       end
     end,
     onmouseup = function(ev)
+      log("mouseup isDragging=" .. tostring(isDraggingAnim) .. " dragKey=" .. tostring(dragAnimKey))
       if isDraggingAnim and dragAnimKey then
         local dropY = ev.y or 0
         local dragDistance = math.abs(dropY - dragStartY)
