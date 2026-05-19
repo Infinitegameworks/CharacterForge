@@ -1,1 +1,1 @@
-return {save_mode="block",recent_blueprints={"C:\\Users\\bluey\\Downloads\\Human Male Model\\Human Male Model\\Sections\\Aseprite\\HumanMaleModel_blueprint.ase","C:\\Dev\\aseprite\\build\\bin\\test_blueprint.ase"},project_roots={}}
+return {recent_blueprints={"C:\\Dev\\aseprite\\build\\bin\\test_blueprint.ase","C:\\Users\\bluey\\Downloads\\Human Male Model\\Human Male Model\\Sections\\Aseprite\\Jimmy_blueprint.ase","C:\\Users\\bluey\\Downloads\\Human Male Model\\Human Male Model\\Sections\\Aseprite\\HumanMaleModel_blueprint.ase"},project_roots={},save_mode="block"}

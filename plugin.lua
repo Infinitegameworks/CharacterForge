@@ -202,7 +202,7 @@ function init(plugin)
         local result = validator.validate(spr, data.cached_schema)
         if result.result == "fail" and blueprint.getSaveMode and blueprint.getSaveMode() == "block" then
           ev.stopPropagation()
-          local msg = "CharacterForge: Cannot save - structure issues:\n\n"
+          local msg = "CharacterForge: Cannot save - missing layers or frame issues:\n\n"
           for _, e in ipairs(result.errors) do
             msg = msg .. "- " .. e .. "\n"
           end
