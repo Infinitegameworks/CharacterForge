@@ -1238,7 +1238,7 @@ function panel.open()
     onwheel = function(ev)
       local visibleHeight = LIST_BOTTOM - previewStartY
       local maxScroll = math.max(0, contentHeight - visibleHeight)
-      scrollOffset = math.max(0, math.min(maxScroll, scrollOffset - (ev.deltaY or 0) * 28))
+      scrollOffset = math.max(0, math.min(maxScroll, scrollOffset + (ev.deltaY or 0) * 28))
       if dlg then dlg:repaint() end
     end,
   }

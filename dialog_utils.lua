@@ -58,7 +58,7 @@ function dialogUtils.scrollableList(dlg, id, width, height, items, emptyText)
     end,
     onwheel = function(ev)
       local maxScroll = math.max(0, contentHeight - visibleHeight)
-      scrollOffset = math.max(0, math.min(maxScroll, scrollOffset - (ev.deltaY or 0) * ROW_HEIGHT * 2))
+      scrollOffset = math.max(0, math.min(maxScroll, scrollOffset + (ev.deltaY or 0) * ROW_HEIGHT * 2))
       dlg:repaint()
     end,
   }
