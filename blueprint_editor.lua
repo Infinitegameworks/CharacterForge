@@ -205,6 +205,34 @@ end
 
 -- ─── Create: Step 1 ────────────────────────────────────
 
+local function editStringList(title, items, itemLabel)
+  while true do
+    local dlg = Dialog{ title = title .. " (" .. #items .. ")" }
+    dialogUtils.scrollableList(dlg, "list", 280, math.min(84, math.max(28, #items * 14 + 12)), items, "(none)")
+    dlg:entry{ id = "addName", label = "Name:", text = "" }
+    dlg:button{ id = "addBtn", text = "Add " .. itemLabel, onclick = function() dlg:close() end }
+    if #items > 0 then
+      dlg:combobox{ id = "removeName", label = "Remove:", options = items }
+      dlg:button{ id = "removeBtn", text = "Remove " .. itemLabel, onclick = function() dlg:close() end }
+    end
+    dlg:separator()
+    dlg:button{ id = "done", text = "Done" }
+    dlg:show()
+
+    if dlg.data.addBtn then
+      local name = trim(dlg.data.addName)
+      if name ~= "" and name ~= "base" and not hasString(items, name) then
+        items[#items + 1] = name
+      end
+    elseif dlg.data.removeBtn then
+      local name = dlg.data.removeName
+      if name then removeString(items, name) end
+    else
+      return items
+    end
+  end
+end
+
 function blueprintEditor.showCreateDialog()
   local charName = ""
   local parts = parseList(TEMPLATE_PARTS[TEMPLATE_OPTIONS[1]], "")
@@ -217,8 +245,13 @@ function blueprintEditor.showCreateDialog()
   local saveDir = ""
 
   while true do
-    local dlg = Dialog{ title = "Create Character" }
+    local summary = #parts .. " parts, " .. #outfits .. " outfits, "
+      .. #effects .. " effects, " .. #anims .. " anims"
+    if useDirections and #directions > 0 then
+      summary = summary .. ", " .. #directions .. " dirs"
+    end
 
+    local dlg = Dialog{ title = "Create Character" }
     dlg:combobox{
       id = "template", label = "Template:", options = TEMPLATE_OPTIONS,
       onchange = function()
@@ -231,46 +264,16 @@ function blueprintEditor.showCreateDialog()
       end,
     }
     dlg:entry{ id = "characterName", label = "Character:", text = charName }
+    dlg:label{ text = summary }
 
-    dlg:separator{ text = "Parts (" .. #parts .. ")" }
-    dialogUtils.scrollableList(dlg, "partsList", 340, math.min(56, math.max(28, #parts * 14 + 12)), parts, "(none)")
-    dlg:entry{ id = "addPart", label = "Name:", text = "" }
-    dlg:button{ id = "addPartBtn", text = "Add Part", onclick = function() dlg:close() end }
-    if #parts > 0 then
-      dlg:combobox{ id = "removePart", label = "Remove:", options = parts }
-      dlg:button{ id = "removePartBtn", text = "Remove Part", onclick = function() dlg:close() end }
-    end
-
-    dlg:separator{ text = "Default Outfits (" .. #outfits .. ")" }
-    dialogUtils.scrollableList(dlg, "outfitsList", 340, math.min(42, math.max(28, #outfits * 14 + 12)), outfits, "(none)")
-    dlg:entry{ id = "addOutfit", label = "Name:", text = "" }
-    dlg:button{ id = "addOutfitBtn", text = "Add Outfit", onclick = function() dlg:close() end }
-    if #outfits > 0 then
-      dlg:combobox{ id = "removeOutfit", label = "Remove:", options = outfits }
-      dlg:button{ id = "removeOutfitBtn", text = "Remove Outfit", onclick = function() dlg:close() end }
-    end
-
-    dlg:separator{ text = "Default Effects (" .. #effects .. ")" }
-    dialogUtils.scrollableList(dlg, "effectsList", 340, math.min(42, math.max(28, #effects * 14 + 12)), effects, "(none)")
-    dlg:entry{ id = "addEffect", label = "Name:", text = "" }
-    dlg:button{ id = "addEffectBtn", text = "Add Effect", onclick = function() dlg:close() end }
-    if #effects > 0 then
-      dlg:combobox{ id = "removeEffect", label = "Remove:", options = effects }
-      dlg:button{ id = "removeEffectBtn", text = "Remove Effect", onclick = function() dlg:close() end }
-    end
-
-    dlg:separator{ text = "Animations (" .. #anims .. ")" }
-    dialogUtils.scrollableList(dlg, "animsList", 340, math.min(56, math.max(28, #anims * 14 + 12)), anims, "(none)")
-    dlg:entry{ id = "addAnim", label = "Name:", text = "" }
-    dlg:button{ id = "addAnimBtn", text = "Add Animation", onclick = function() dlg:close() end }
-    if #anims > 0 then
-      dlg:combobox{ id = "removeAnim", label = "Remove:", options = anims }
-      dlg:button{ id = "removeAnimBtn", text = "Remove Animation", onclick = function() dlg:close() end }
-    end
+    dlg:separator()
+    dlg:button{ id = "editParts", text = "Edit Parts (" .. #parts .. ")", onclick = function() dlg:close() end }
+    dlg:button{ id = "editOutfits", text = "Edit Default Outfits (" .. #outfits .. ")", onclick = function() dlg:close() end }
+    dlg:button{ id = "editEffects", text = "Edit Default Effects (" .. #effects .. ")", onclick = function() dlg:close() end }
+    dlg:button{ id = "editAnims", text = "Edit Animations (" .. #anims .. ")", onclick = function() dlg:close() end }
 
     dlg:separator{ text = "Options" }
     dlg:check{ id = "includeHitbox", label = "Include Hitbox Layer", selected = includeHitbox }
-    dlg:separator{ text = "Directions" }
     dlg:check{ id = "useDirections", label = "Include Directions", selected = useDirections }
     if useDirections and #directions > 0 then
       dlg:label{ text = table.concat(directions, ", ") }
@@ -289,41 +292,17 @@ function blueprintEditor.showCreateDialog()
     useDirections = dlg.data.useDirections or false
     includeHitbox = dlg.data.includeHitbox or false
 
-    if dlg.data.setupDirsBtn then
+    if dlg.data.editParts then
+      parts = editStringList("Parts", parts, "Part")
+    elseif dlg.data.editOutfits then
+      outfits = editStringList("Default Outfits", outfits, "Outfit")
+    elseif dlg.data.editEffects then
+      effects = editStringList("Default Effects", effects, "Effect")
+    elseif dlg.data.editAnims then
+      anims = editStringList("Animations", anims, "Animation")
+    elseif dlg.data.setupDirsBtn then
       directions = showDirectionSetup(directions)
       if #directions > 0 then useDirections = true end
-    elseif dlg.data.addPartBtn then
-      local name = trim(dlg.data.addPart)
-      if name ~= "" and not hasString(parts, name) then
-        parts[#parts + 1] = name
-      end
-    elseif dlg.data.removePartBtn then
-      local name = dlg.data.removePart
-      if name then removeString(parts, name) end
-    elseif dlg.data.addOutfitBtn then
-      local name = trim(dlg.data.addOutfit)
-      if name ~= "" and name ~= "base" and not hasString(outfits, name) then
-        outfits[#outfits + 1] = name
-      end
-    elseif dlg.data.removeOutfitBtn then
-      local name = dlg.data.removeOutfit
-      if name then removeString(outfits, name) end
-    elseif dlg.data.addEffectBtn then
-      local name = trim(dlg.data.addEffect)
-      if name ~= "" and name ~= "base" and not hasString(effects, name) then
-        effects[#effects + 1] = name
-      end
-    elseif dlg.data.removeEffectBtn then
-      local name = dlg.data.removeEffect
-      if name then removeString(effects, name) end
-    elseif dlg.data.addAnimBtn then
-      local name = trim(dlg.data.addAnim)
-      if name ~= "" and not hasString(anims, name) then
-        anims[#anims + 1] = name
-      end
-    elseif dlg.data.removeAnimBtn then
-      local name = dlg.data.removeAnim
-      if name then removeString(anims, name) end
     elseif dlg.data.next or dlg.data.createNow then
       if charName == "" then app.alert("Character name is required.")
       elseif #parts == 0 then app.alert("At least one body part is required.")
