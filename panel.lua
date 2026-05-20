@@ -1453,6 +1453,13 @@ function panel.open()
 
   dlg:show{ wait = false }
 
+  pcall(function()
+    local b = dlg.bounds
+    if b and b.x < 10 and b.y < 10 then
+      dlg.bounds = Rectangle(200, 150, b.width, b.height)
+    end
+  end)
+
   siteChangeHandler = app.events:on("sitechange", onSiteChange)
   connectSpriteEvents(app.activeSprite)
   refreshPanel()
