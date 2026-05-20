@@ -29,11 +29,13 @@ local scrollOffset = 0
 local contentHeight = 0
 local isDraggingScrollbar = false
 local collapsedGroups = {}
+local collapsedParts = {}
 local isDraggingAnim = false
 local dragAnimKey = nil
 local dragStartY = 0
 local dragMouseY = 0
 local groupHeaderRects = {}
+local partHeaderRects = {}
 local hoverAnimRowKey = nil
 local hoverVariantRowKey = nil
 
@@ -501,8 +503,11 @@ local function readVariantDoneMap(spr, layerStatus)
   return doneMap, total, done
 end
 
+local PART_HEADER_COLOR = Color{ r = 58, g = 58, b = 58, a = 255 }
+
 local function drawAnimationProgressView(gc, result)
   variantRowRects = {}
+  partHeaderRects = {}
   if not result then return end
   local layerStatus = result.layer_status or {}
   if #layerStatus == 0 then
@@ -523,80 +528,103 @@ local function drawAnimationProgressView(gc, result)
 
   local rowIdx = 0
   for _, part in ipairs(layerStatus) do
+    local collapsed = collapsedParts[part.id]
     sy = y - scrollOffset
+
     if part.status == "fail" then
       if sy >= previewStartY - 4 and sy < LIST_BOTTOM then
         drawProgressDot(gc, 8, sy + 1, utils.COLOR_FAIL)
         drawText(gc, part.part .. ": missing", 24, sy, utils.COLOR_FAIL)
       end
-      y = y + 14
+      y = y + 16
       goto nextPart2
     end
 
-    if sy >= previewStartY - 4 and sy < LIST_BOTTOM then
-      drawText(gc, part.part, 8, sy, utils.COLOR_TEXT)
-    end
-    y = y + 14
-
-    local hasMultipleSlots = #(part.slots or {}) > 1
+    local partDone = 0
+    local partTotal = 0
     for _, slot in ipairs(part.slots or {}) do
+      local baseFrames = slot.base_frames or 0
       for _, variant in ipairs(slot.variants or {}) do
-        local key = part.id .. "/" .. slot.id .. "/" .. variant.id
-        local isDone = doneMap[key]
-
-        local dotColor
-        if variant.absent then
-          dotColor = utils.COLOR_ABSENT
-        elseif variant.status == "fail" then
-          dotColor = utils.COLOR_FAIL
-        elseif isDone then
-          dotColor = utils.COLOR_PASS
-        else
-          dotColor = utils.COLOR_UNKNOWN
-        end
-
-        local label = variant.variant
-        if hasMultipleSlots then
-          label = slot.slot .. "/" .. label
-        end
-        if variant.frames > 0 then
-          label = label .. " (" .. tostring(variant.frames) .. "f)"
-        end
-        if variant.absent then
-          label = label .. " skipped"
-        elseif isDone then
-          label = label .. " done"
-        end
-
-        sy = y - scrollOffset
-        if sy >= previewStartY - 4 and sy < LIST_BOTTOM then
-          local key = variantRowKey(part.id, slot.id, variant.id)
-          local hovered = hoverVariantRowKey == key
-          if hovered then
-            fillRect(gc, 16, sy - 2, 316, 14, Color{ r = 64, g = 64, b = 64, a = 255 })
-          elseif rowIdx % 2 == 0 then
-            fillRect(gc, 16, sy - 2, 316, 14, Color{ r = 46, g = 46, b = 46, a = 255 })
-          end
-          drawProgressDot(gc, 20, sy + 1, dotColor)
-          drawText(gc, label, 36, sy, variant.absent and utils.COLOR_MUTED or utils.COLOR_TEXT)
-
-          if not variant.absent then
-            drawText(gc, isDone and "undo" or "done", 294, sy, hovered and utils.COLOR_TEXT or utils.COLOR_MUTED)
-            variantRowRects[#variantRowRects + 1] = {
-              key = key,
-              partId = part.id,
-              partName = part.part,
-              slotId = slot.id,
-              slotName = slot.slot,
-              variantId = variant.id,
-              variantName = variant.variant,
-              x = 16, y = sy - 2, w = 316, h = 16,
-            }
+        if not variant.absent then
+          partTotal = partTotal + 1
+          if baseFrames > 0 and (variant.frames or 0) == baseFrames then
+            partDone = partDone + 1
           end
         end
+      end
+    end
 
-        rowIdx = rowIdx + 1
-        y = y + 14
+    if sy >= previewStartY - 4 and sy < LIST_BOTTOM then
+      fillRect(gc, 8, sy - 2, 324, 14, PART_HEADER_COLOR)
+      local arrow = collapsed and "> " or "v "
+      local partColor = (partDone == partTotal and partTotal > 0) and utils.COLOR_PASS or utils.COLOR_TEXT
+      drawText(gc, arrow .. part.part .. " (" .. partDone .. "/" .. partTotal .. ")", 12, sy, partColor)
+      partHeaderRects[#partHeaderRects + 1] = {
+        id = part.id, x = 8, y = sy - 2, w = 324, h = 16,
+      }
+    end
+    y = y + 16
+
+    if not collapsed then
+      local hasMultipleSlots = #(part.slots or {}) > 1
+      for _, slot in ipairs(part.slots or {}) do
+        for _, variant in ipairs(slot.variants or {}) do
+          local key = part.id .. "/" .. slot.id .. "/" .. variant.id
+          local isDone = doneMap[key]
+
+          local dotColor
+          if variant.absent then
+            dotColor = utils.COLOR_ABSENT
+          elseif variant.status == "fail" then
+            dotColor = utils.COLOR_FAIL
+          elseif isDone then
+            dotColor = utils.COLOR_PASS
+          else
+            dotColor = utils.COLOR_UNKNOWN
+          end
+
+          local label = variant.variant
+          if hasMultipleSlots then
+            label = slot.slot .. "/" .. label
+          end
+          if variant.frames > 0 then
+            label = label .. " (" .. tostring(variant.frames) .. "f)"
+          end
+          if variant.absent then
+            label = label .. " skipped"
+          elseif isDone then
+            label = label .. " done"
+          end
+
+          sy = y - scrollOffset
+          if sy >= previewStartY - 4 and sy < LIST_BOTTOM then
+            local vkey = variantRowKey(part.id, slot.id, variant.id)
+            local hovered = hoverVariantRowKey == vkey
+            if hovered then
+              fillRect(gc, 20, sy - 2, 312, 14, Color{ r = 64, g = 64, b = 64, a = 255 })
+            elseif rowIdx % 2 == 0 then
+              fillRect(gc, 20, sy - 2, 312, 14, Color{ r = 46, g = 46, b = 46, a = 255 })
+            end
+            drawProgressDot(gc, 24, sy + 1, dotColor)
+            drawText(gc, label, 40, sy, variant.absent and utils.COLOR_MUTED or utils.COLOR_TEXT)
+
+            if not variant.absent then
+              variantRowRects[#variantRowRects + 1] = {
+                key = vkey,
+                partId = part.id,
+                partName = part.part,
+                slotId = slot.id,
+                slotName = slot.slot,
+                variantId = variant.id,
+                variantName = variant.variant,
+                x = 20, y = sy - 2, w = 312, h = 16,
+              }
+            end
+          end
+
+          rowIdx = rowIdx + 1
+          y = y + 14
+        end
       end
     end
     ::nextPart2::
@@ -837,6 +865,7 @@ local function onPaint(ev)
 
     animRowRects = {}
     variantRowRects = {}
+    partHeaderRects = {}
 
     fillRect(gc, 0, 0, w, 34, utils.COLOR_PANEL)
     drawText(gc, statusText, 8, 7, utils.COLOR_TEXT)
@@ -992,6 +1021,13 @@ local function onCanvasMouseDown(ev)
         dragAnimKey = rect.key
         dragStartY = y
         dragMouseY = y
+        return
+      end
+    end
+    for _, rect in ipairs(partHeaderRects or {}) do
+      if x >= rect.x and x <= rect.x + rect.w and y >= rect.y and y <= rect.y + rect.h then
+        collapsedParts[rect.id] = not collapsedParts[rect.id]
+        if dlg then dlg:repaint() end
         return
       end
     end
