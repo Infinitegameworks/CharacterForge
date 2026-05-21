@@ -158,15 +158,6 @@ local function refreshPanel()
   if not dlg then return end
 
   local spr = app.activeSprite
-  local sprFile = spr and spr.filename or ""
-  local curFile = currentSprite and currentSprite.filename or ""
-  if sprFile ~= curFile then
-    scrollOffset = 0
-    hoverAnimRowKey = nil
-    hoverVariantRowKey = nil
-    isDraggingAnim = false
-    dragAnimKey = nil
-  end
   currentSprite = spr
   lastValidation = nil
   lastData = nil
@@ -288,6 +279,11 @@ local function onSiteChange()
       end)
     end
     if spr ~= currentSprite then
+      scrollOffset = 0
+      hoverAnimRowKey = nil
+      hoverVariantRowKey = nil
+      isDraggingAnim = false
+      dragAnimKey = nil
       connectSpriteEvents(spr)
     end
     refreshPanel()
