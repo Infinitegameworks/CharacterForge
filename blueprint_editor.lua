@@ -246,10 +246,6 @@ function blueprintEditor.showCreateDialog()
   local directions = {}
   local useDirections = false
   local includeHitbox = false
-  local spriteWidth = 64
-  local spriteHeight = 64
-  local colorMode = "RGB"
-  local bgColor = "Transparent"
   local saveDir = ""
 
   while true do
@@ -280,12 +276,6 @@ function blueprintEditor.showCreateDialog()
     dlg:button{ id = "editEffects", text = "Edit Default Effects (" .. #effects .. ")", onclick = function() dlg:close() end }
     dlg:button{ id = "editAnims", text = "Edit Animations (" .. #anims .. ")", onclick = function() dlg:close() end }
 
-    dlg:separator{ text = "Sprite" }
-    dlg:number{ id = "spriteWidth", label = "Width:", text = tostring(spriteWidth), decimals = 0 }
-    dlg:number{ id = "spriteHeight", label = "Height:", text = tostring(spriteHeight), decimals = 0 }
-    dlg:combobox{ id = "colorMode", label = "Color:", options = COLOR_MODE_OPTIONS, option = colorMode }
-    dlg:combobox{ id = "bgColor", label = "Background:", options = BG_OPTIONS, option = bgColor }
-
     dlg:separator{ text = "Options" }
     dlg:check{ id = "includeHitbox", label = "Include Hitbox Layer", selected = includeHitbox }
     dlg:check{ id = "useDirections", label = "Include Directions", selected = useDirections }
@@ -303,10 +293,6 @@ function blueprintEditor.showCreateDialog()
 
     charName = trim(dlg.data.characterName or charName)
     saveDir = dlg.data.saveDir or saveDir
-    spriteWidth = math.max(1, math.floor(dlg.data.spriteWidth or spriteWidth))
-    spriteHeight = math.max(1, math.floor(dlg.data.spriteHeight or spriteHeight))
-    colorMode = dlg.data.colorMode or colorMode
-    bgColor = dlg.data.bgColor or bgColor
     useDirections = dlg.data.useDirections or false
     includeHitbox = dlg.data.includeHitbox or false
 
@@ -341,17 +327,10 @@ function blueprintEditor.showCreateDialog()
         end
         local finalDirs = useDirections and directions or {}
         local animText = table.concat(anims, ", ")
-        local spriteSettings = {
-          width = spriteWidth,
-          height = spriteHeight,
-          colorMode = COLOR_MODE_MAP[colorMode] or ColorMode.RGB,
-          colorModeName = colorMode,
-          bgColor = bgColor,
-        }
         if dlg.data.next then
-          blueprintEditor._showStep2(charName, bodyParts, animText, saveDir, finalDirs, includeHitbox, spriteSettings)
+          blueprintEditor._showStep2(charName, bodyParts, animText, saveDir, finalDirs, includeHitbox)
         else
-          blueprintEditor._finishCreate(charName, bodyParts, animText, saveDir, finalDirs, includeHitbox, spriteSettings)
+          blueprintEditor._finishCreate(charName, bodyParts, animText, saveDir, finalDirs, includeHitbox)
         end
         return
       end
@@ -363,7 +342,7 @@ end
 
 -- ─── Create: Step 2 (per-part, rebuilds on every action) ─
 
-function blueprintEditor._showStep2(charName, bodyParts, animText, saveDir, directions, includeHitbox, spriteSettings)
+function blueprintEditor._showStep2(charName, bodyParts, animText, saveDir, directions, includeHitbox)
   local selectedName = bodyParts[1] and bodyParts[1].name or ""
 
   while true do
@@ -425,7 +404,7 @@ function blueprintEditor._showStep2(charName, bodyParts, animText, saveDir, dire
     dlg:show()
 
     if dlg.data.create then
-      blueprintEditor._finishCreate(charName, bodyParts, animText, saveDir, directions, includeHitbox, spriteSettings)
+      blueprintEditor._finishCreate(charName, bodyParts, animText, saveDir, directions, includeHitbox)
       return
     elseif dlg.data.back then
       blueprintEditor.showCreateDialog()
@@ -436,7 +415,25 @@ function blueprintEditor._showStep2(charName, bodyParts, animText, saveDir, dire
   end
 end
 
-function blueprintEditor._finishCreate(charName, bodyParts, animText, saveDir, directions, includeHitbox, spriteSettings)
+function blueprintEditor._finishCreate(charName, bodyParts, animText, saveDir, directions, includeHitbox)
+  local dlg = Dialog{ title = "New Sprite — " .. charName }
+  dlg:number{ id = "width", label = "Width:", text = "64", decimals = 0 }
+  dlg:number{ id = "height", label = "Height:", text = "64", decimals = 0 }
+  dlg:combobox{ id = "colorMode", label = "Color Mode:", options = COLOR_MODE_OPTIONS }
+  dlg:combobox{ id = "bgColor", label = "Background:", options = BG_OPTIONS }
+  dlg:separator()
+  dlg:button{ id = "ok", text = "OK" }
+  dlg:button{ id = "cancel", text = "Cancel" }
+  dlg:show()
+
+  if not dlg.data.ok then return end
+
+  local sprWidth = math.max(1, math.floor(dlg.data.width or 64))
+  local sprHeight = math.max(1, math.floor(dlg.data.height or 64))
+  local sprColorMode = COLOR_MODE_MAP[dlg.data.colorMode] or ColorMode.RGB
+  local sprColorModeName = dlg.data.colorMode or "RGB"
+  local sprBg = dlg.data.bgColor or "Transparent"
+
   directions = directions or {}
   local animNames = parseList(animText, "")
   local animations = {}
@@ -452,21 +449,19 @@ function blueprintEditor._finishCreate(charName, bodyParts, animText, saveDir, d
     end
   end
 
-  spriteSettings = spriteSettings or { width = 64, height = 64, colorMode = ColorMode.RGB, colorModeName = "RGB", bgColor = "Transparent" }
-
   local schema = blueprint.normalizeSchema({
     character_name = charName,
     body_parts = bodyParts,
     directions = directions,
     include_hitbox = includeHitbox and true or false,
-    sprite_width = spriteSettings.width,
-    sprite_height = spriteSettings.height,
-    sprite_color_mode = spriteSettings.colorModeName,
-    sprite_bg = spriteSettings.bgColor,
+    sprite_width = sprWidth,
+    sprite_height = sprHeight,
+    sprite_color_mode = sprColorModeName,
+    sprite_bg = sprBg,
     animations = animations,
   })
 
-  local spr = Sprite(spriteSettings.width, spriteSettings.height, spriteSettings.colorMode)
+  local spr = Sprite(sprWidth, sprHeight, sprColorMode)
   blueprint.ensureLayerStructure(spr, schema)
   if spr.layers[1] and spr.layers[1].name == "Layer 1" then
     spr.layers[1].name = "Reference"
