@@ -218,6 +218,10 @@ function blueprint.normalizeSchema(schema)
     variants = globalVariants,
     directions = directions,
     include_hitbox = schema.include_hitbox and true or false,
+    sprite_width = schema.sprite_width or 64,
+    sprite_height = schema.sprite_height or 64,
+    sprite_color_mode = schema.sprite_color_mode or "RGB",
+    sprite_bg = schema.sprite_bg or "Transparent",
     animations = animations,
   }
 end
@@ -403,6 +407,10 @@ function blueprint.writeBlueprintSchema(sprite, schema)
   props.variants = writeVariantsToProperties(normalized.variants)
   props.directions = cleanArray(normalized.directions or {})
   props.include_hitbox = normalized.include_hitbox and true or false
+  props.sprite_width = normalized.sprite_width or 64
+  props.sprite_height = normalized.sprite_height or 64
+  props.sprite_color_mode = normalized.sprite_color_mode or "RGB"
+  props.sprite_bg = normalized.sprite_bg or "Transparent"
   props.animations = writeAnimationsToProperties(normalized.animations)
 
   if sprite.filename and sprite.filename ~= "" and app.fs.isFile(sprite.filename) then
@@ -1220,6 +1228,10 @@ function blueprint.createNextAnimation(bpPath, targetAnimName, targetDirection)
       variants = schema.variants,
       directions = schema.directions,
       include_hitbox = schema.include_hitbox,
+      sprite_width = schema.sprite_width,
+      sprite_height = schema.sprite_height,
+      sprite_color_mode = schema.sprite_color_mode,
+      sprite_bg = schema.sprite_bg,
       animations = schema.animations,
       cache_timestamp = os.time(),
     },
