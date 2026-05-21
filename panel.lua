@@ -709,7 +709,7 @@ local function drawSlotChips(gc, schema)
   slotChipRects = {}
   local slotNames = schema and blueprint.listSlotNames(schema) or {}
   if #slotNames <= 1 then
-    previewStartY = 40
+    previewStartY = 36
     return
   end
   local x = 8
@@ -888,11 +888,11 @@ local function onPaint(ev)
     variantRowRects = {}
     partHeaderRects = {}
 
-    fillRect(gc, 0, 0, w, 34, utils.COLOR_PANEL)
-    drawText(gc, statusText, 8, 7, utils.COLOR_TEXT)
-    drawText(gc, detailText, 8, 22, blueprintMissing and utils.COLOR_WARN or utils.COLOR_MUTED)
+    fillRect(gc, 0, 0, w, 30, utils.COLOR_PANEL)
+    drawText(gc, statusText, 8, 3, utils.COLOR_TEXT)
+    drawText(gc, detailText, 8, 16, blueprintMissing and utils.COLOR_WARN or utils.COLOR_MUTED)
 
-    previewStartY = 40
+    previewStartY = 36
 
     if not lastValidation then
       if lastSchema and blueprint.isBlueprint(app.activeSprite) then

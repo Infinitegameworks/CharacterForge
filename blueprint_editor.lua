@@ -354,8 +354,7 @@ function blueprintEditor._showStep2(charName, bodyParts, animText, saveDir, dire
     local effectNames = part and partVariantNames(part, "state") or {}
     local removeOpts = part and partVariantNames(part) or {}
 
-    local title = "Step 2: " .. (part and part.name or "")
-    if part then title = title .. " — " .. partSummary(part) end
+    local title = "Per-Part: " .. (part and part.name or "")
     local dlg = Dialog{ title = title }
 
     dlg:combobox{ id = "partSelect", label = "Part:", option = selectedName, options = partNames }
@@ -502,7 +501,7 @@ function blueprintEditor.showEditDialog()
   local partCount = #(schemaBefore.body_parts or {})
   local animCount = #(schemaBefore.animations or {})
 
-  local dlg = Dialog{ title = "Edit: " .. charName .. " (" .. partCount .. " parts, " .. animCount .. " anims)" }
+  local dlg = Dialog{ title = "Edit: " .. charName }
   dlg:button{ id = "editParts", text = "Edit Parts", onclick = function() dlg:close() end }
   dlg:button{ id = "editOutfits", text = "Edit Outfits / Effects", onclick = function() dlg:close() end }
   dlg:button{ id = "editAnimations", text = "Edit Animations", onclick = function() dlg:close() end }
@@ -649,9 +648,7 @@ function blueprintEditor._editOutfits(spr)
     local effects = part and partVariantNames(part, "state") or {}
     local removeOpts = part and partVariantNames(part) or {}
 
-    local title = "Outfits / Effects: " .. selectedPartName
-    if part then title = title .. " — " .. partSummary(part) end
-    local dlg = Dialog{ title = title }
+    local dlg = Dialog{ title = "Outfits: " .. selectedPartName }
 
     dlg:combobox{ id = "partSelect", label = "Part:", option = selectedPartName, options = partNames }
     dlg:button{ id = "switchPart", text = "Switch Part", onclick = function()
@@ -872,7 +869,7 @@ function blueprintEditor.showEditAnimationDialog()
   local charName = data.character_name or "animation"
   local animName = data.animation_name or ""
 
-  local dlg = Dialog{ title = "Edit Animation: " .. charName .. " / " .. animName }
+  local dlg = Dialog{ title = "Edit: " .. animName }
   dlg:button{ id = "editOutfits", text = "Edit Outfits / Effects", onclick = function() dlg:close() end }
   dlg:button{ id = "editParts", text = "Edit Parts", onclick = function() dlg:close() end }
   if hasBlueprintFile then
@@ -933,9 +930,7 @@ function blueprintEditor._editAnimOutfits(animSprite, data, applyToBp, bpPath)
     local effects = part and partVariantNames(part, "state") or {}
     local removeOpts = part and partVariantNames(part) or {}
 
-    local title = "Outfits: " .. selectedPartName
-    if part then title = title .. " — " .. partSummary(part) end
-    local dlg = Dialog{ title = title }
+    local dlg = Dialog{ title = "Outfits: " .. selectedPartName }
 
     dlg:combobox{ id = "partSelect", label = "Part:", option = selectedPartName, options = partNames }
     dlg:button{ id = "switchPart", text = "Switch Part", onclick = function()
