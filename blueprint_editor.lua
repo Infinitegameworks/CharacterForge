@@ -415,7 +415,7 @@ function blueprintEditor._showStep2(charName, bodyParts, animText, saveDir, dire
 end
 
 function blueprintEditor._finishCreate(charName, bodyParts, animText, saveDir, directions, includeHitbox)
-  local dlg = Dialog{ title = "New Sprite — " .. charName }
+  local dlg = Dialog{ title = "New Sprite" }
   dlg:number{ id = "width", label = "Width:", text = "64", decimals = 0 }
   dlg:number{ id = "height", label = "Height:", text = "64", decimals = 0 }
   dlg:combobox{ id = "colorMode", label = "Color Mode:", options = COLOR_MODE_OPTIONS }
