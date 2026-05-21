@@ -486,19 +486,30 @@ local function readVariantDoneMap(spr, layerStatus)
   local done = 0
 
   for _, part in ipairs(layerStatus) do
+    local partLayer = spr and blueprint.findLayerByIdOrName(spr.layers, "part", part.id, part.part)
     for _, slot in ipairs(part.slots or {}) do
       local baseFrames = slot.base_frames or 0
       for _, variant in ipairs(slot.variants or {}) do
         if variant.absent then goto nextVariant end
         total = total + 1
-        if baseFrames > 0 and (variant.frames or 0) == baseFrames then
+        local autoDone = baseFrames > 0 and (variant.frames or 0) == baseFrames
+        local manualDone = false
+        if partLayer then
+          local slotObj = { id = slot.id, name = slot.slot }
+          local variantObj = { id = variant.id, name = variant.variant }
+          local vl = blueprint.findVariantLayer(partLayer, slotObj, variantObj)
+          if vl then
+            local props = vl.properties(blueprint.PK)
+            manualDone = props and props.marked_done and true or false
+          end
+        end
+        if autoDone or manualDone then
           doneMap[part.id .. "/" .. slot.id .. "/" .. variant.id] = true
           done = done + 1
         end
         ::nextVariant::
       end
     end
-    ::nextPart::
   end
   return doneMap, total, done
 end
@@ -609,6 +620,15 @@ local function drawAnimationProgressView(gc, result)
             drawText(gc, label, 40, sy, variant.absent and utils.COLOR_MUTED or utils.COLOR_TEXT)
 
             if not variant.absent then
+              local checkX = 306
+              gc.color = isDone and utils.COLOR_PASS or Color{ r = 70, g = 70, b = 70, a = 255 }
+              gc:fillRect(Rectangle(checkX, sy, 10, 10))
+              if isDone then
+                gc.color = utils.COLOR_BG
+                gc:fillRect(Rectangle(checkX + 3, sy + 4, 5, 2))
+                gc:fillRect(Rectangle(checkX + 1, sy + 2, 2, 5))
+              end
+
               variantRowRects[#variantRowRects + 1] = {
                 key = vkey,
                 partId = part.id,
@@ -618,6 +638,7 @@ local function drawAnimationProgressView(gc, result)
                 variantId = variant.id,
                 variantName = variant.variant,
                 x = 20, y = sy - 2, w = 312, h = 16,
+                checkX = checkX,
               }
             end
           end
@@ -930,7 +951,7 @@ local function onAnimRowClick(rect)
   end
 end
 
-local function onVariantRowClick(rect)
+local function onVariantRowClick(rect, clickX)
   local spr = app.activeSprite
   if not spr then return end
 
@@ -942,7 +963,15 @@ local function onVariantRowClick(rect)
   local variantLayer = blueprint.findVariantLayer(partLayer, slotObj, variantObj)
   if not variantLayer then return end
 
-  app.activeLayer = variantLayer
+  if clickX and rect.checkX and clickX >= rect.checkX - 4 then
+    app.transaction(function()
+      local props = variantLayer.properties(blueprint.PK)
+      props.marked_done = not props.marked_done
+    end)
+    refreshPanel()
+  else
+    app.activeLayer = variantLayer
+  end
 end
 
 local function scrollbarHitAndDrag(y)
@@ -1033,7 +1062,7 @@ local function onCanvasMouseDown(ev)
     end
     for _, rect in ipairs(variantRowRects or {}) do
       if x >= rect.x and x <= rect.x + rect.w and y >= rect.y and y <= rect.y + rect.h then
-        onVariantRowClick(rect)
+        onVariantRowClick(rect, x)
         return
       end
     end

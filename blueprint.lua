@@ -1489,10 +1489,12 @@ function blueprint.checkAllVariantsDone(sprite)
         if vl then
           local props = vl.properties(PK)
           if props and props.intentionally_absent then goto nextVar end
-        end
-        total = total + 1
-        if vl and baseFrames > 0 and countFrames(vl) == baseFrames then
-          done = done + 1
+          total = total + 1
+          local autoDone = baseFrames > 0 and countFrames(vl) == baseFrames
+          local manualDone = props and props.marked_done and true or false
+          if autoDone or manualDone then done = done + 1 end
+        else
+          total = total + 1
         end
         ::nextVar::
       end
