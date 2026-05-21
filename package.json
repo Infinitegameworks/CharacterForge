@@ -1,8 +1,8 @@
 {
   "name": "character-forge",
   "displayName": "CharacterForge",
-  "description": "Layered character pipeline management with blueprint-driven validation",
-  "version": "0.1.0",
+  "description": "Blueprint-driven layer management for character animation pipelines — per-part outfits, directional animations, progress tracking",
+  "version": "1.0.0",
   "author": { "name": "Infinite Gameworks", "email": "infinitegameworks@gmail.com" },
   "publisher": "infinitegameworks",
   "license": "MIT",
