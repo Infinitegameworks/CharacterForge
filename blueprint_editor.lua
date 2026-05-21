@@ -112,10 +112,7 @@ end
 
 local function partSummary(part)
   local outfits = partVariantNames(part, "variant")
-  local effects = partVariantNames(part, "state")
-  local text = #outfits .. " outfit(s)"
-  if #effects > 0 then text = text .. ", " .. #effects .. " effect(s)" end
-  return text
+  return #outfits .. " outfit(s)"
 end
 
 local function applyBlueprintSchema(sprite, schema)
@@ -241,7 +238,6 @@ function blueprintEditor.showCreateDialog()
   local charName = ""
   local parts = parseList(TEMPLATE_PARTS[TEMPLATE_OPTIONS[1]], "")
   local outfits = {}
-  local effects = {}
   local anims = parseList(TEMPLATE_ANIMATIONS, "")
   local directions = {}
   local useDirections = false
@@ -249,8 +245,7 @@ function blueprintEditor.showCreateDialog()
   local saveDir = ""
 
   while true do
-    local summary = #parts .. " parts, " .. #outfits .. " outfits, "
-      .. #effects .. " effects, " .. #anims .. " anims"
+    local summary = #parts .. " parts, " .. #outfits .. " outfits, " .. #anims .. " anims"
     if useDirections and #directions > 0 then
       summary = summary .. ", " .. #directions .. " dirs"
     end
@@ -273,7 +268,6 @@ function blueprintEditor.showCreateDialog()
     dlg:separator()
     dlg:button{ id = "editParts", text = "Edit Parts (" .. #parts .. ")", onclick = function() dlg:close() end }
     dlg:button{ id = "editOutfits", text = "Edit Default Outfits (" .. #outfits .. ")", onclick = function() dlg:close() end }
-    dlg:button{ id = "editEffects", text = "Edit Default Effects (" .. #effects .. ")", onclick = function() dlg:close() end }
     dlg:button{ id = "editAnims", text = "Edit Animations (" .. #anims .. ")", onclick = function() dlg:close() end }
 
     dlg:separator{ text = "Options" }
@@ -300,8 +294,6 @@ function blueprintEditor.showCreateDialog()
       parts = editStringList("Parts", parts, "Part")
     elseif dlg.data.editOutfits then
       outfits = editStringList("Default Outfits", outfits, "Outfit")
-    elseif dlg.data.editEffects then
-      effects = editStringList("Default Effects", effects, "Effect")
     elseif dlg.data.editAnims then
       anims = editStringList("Animations", anims, "Animation")
     elseif dlg.data.setupDirsBtn then
@@ -316,9 +308,6 @@ function blueprintEditor.showCreateDialog()
           local variants = {{ id = "variant_base", name = "base", type = "variant", required = true }}
           for _, name in ipairs(outfits) do
             variants[#variants + 1] = { name = name, type = "variant", required = false }
-          end
-          for _, name in ipairs(effects) do
-            variants[#variants + 1] = { name = name, type = "state", required = false }
           end
           bodyParts[#bodyParts + 1] = {
             name = partName, sort_order = #bodyParts + 1,
@@ -351,7 +340,6 @@ function blueprintEditor._showStep2(charName, bodyParts, animText, saveDir, dire
     for _, p in ipairs(bodyParts) do partNames[#partNames + 1] = p.name end
 
     local outfitNames = part and partVariantNames(part, "variant") or {}
-    local effectNames = part and partVariantNames(part, "state") or {}
     local removeOpts = part and partVariantNames(part) or {}
 
     local title = "Per-Part: " .. (part and part.name or "")
@@ -362,17 +350,13 @@ function blueprintEditor._showStep2(charName, bodyParts, animText, saveDir, dire
       selectedName = dlg.data.partSelect or selectedName; dlg:close()
     end }
 
-    local allVars = {}
-    for _, name in ipairs(outfitNames) do allVars[#allVars + 1] = name .. " (outfit)" end
-    for _, name in ipairs(effectNames) do allVars[#allVars + 1] = name .. " (effect)" end
-    dlg:separator{ text = "Outfits & Effects" }
-    dialogUtils.scrollableList(dlg, "variantsList", 300, math.min(56, math.max(28, #allVars * 14 + 12)), allVars, "(base only)")
+    dlg:separator{ text = "Outfits" }
+    dialogUtils.scrollableList(dlg, "variantsList", 300, math.min(56, math.max(28, #outfitNames * 14 + 12)), outfitNames, "(base only)")
 
     dlg:entry{ id = "addNames", label = "Add:", text = "" }
-    dlg:combobox{ id = "addKind", label = "Kind:", options = { "outfit", "effect" } }
     dlg:button{ id = "addBtn", text = "Add", onclick = function()
       if not part then return end
-      local kind = (dlg.data.addKind or "outfit") == "effect" and "state" or "variant"
+      local kind = "variant"
       for _, name in ipairs(parseList(dlg.data.addNames, "")) do
         if name ~= "base" then
           for _, slot in ipairs(part.slots or {}) do
@@ -503,7 +487,7 @@ function blueprintEditor.showEditDialog()
 
   local dlg = Dialog{ title = "Edit: " .. charName }
   dlg:button{ id = "editParts", text = "Edit Parts", onclick = function() dlg:close() end }
-  dlg:button{ id = "editOutfits", text = "Edit Outfits / Effects", onclick = function() dlg:close() end }
+  dlg:button{ id = "editOutfits", text = "Edit Outfits", onclick = function() dlg:close() end }
   dlg:button{ id = "editAnimations", text = "Edit Animations", onclick = function() dlg:close() end }
   dlg:button{ id = "cancel", text = "Close" }
   dlg:show()
@@ -629,7 +613,7 @@ function blueprintEditor._editParts(spr)
   end
 end
 
--- ─── Edit: Outfits / Effects ────────────────────────────
+-- ─── Edit: Outfits ──────────────────────────────────────
 
 function blueprintEditor._editOutfits(spr)
   local selectedPartName = nil
@@ -645,7 +629,6 @@ function blueprintEditor._editOutfits(spr)
 
     local part = findNamedItem(schema.body_parts, selectedPartName)
     local outfits = part and partVariantNames(part, "variant") or {}
-    local effects = part and partVariantNames(part, "state") or {}
     local removeOpts = part and partVariantNames(part) or {}
 
     local dlg = Dialog{ title = "Outfits: " .. selectedPartName }
@@ -657,12 +640,10 @@ function blueprintEditor._editOutfits(spr)
 
     local allVariants = {}
     for _, name in ipairs(outfits) do allVariants[#allVariants + 1] = name .. " (outfit)" end
-    for _, name in ipairs(effects) do allVariants[#allVariants + 1] = name .. " (effect)" end
-    dlg:separator{ text = "Outfits & Effects" }
+    dlg:separator{ text = "Outfits" }
     dialogUtils.scrollableList(dlg, "variantsList", 320, math.min(70, math.max(28, #allVariants * 14 + 12)), allVariants, "(base only)")
 
     dlg:entry{ id = "addNames", label = "Add:", text = "" }
-    dlg:combobox{ id = "addKind", label = "Kind:", options = { "outfit", "effect" } }
     dlg:button{ id = "addBtn", text = "Add to " .. selectedPartName, onclick = function() dlg:close() end }
 
     if #removeOpts > 0 then
@@ -677,7 +658,6 @@ function blueprintEditor._editOutfits(spr)
 
     dlg:separator{ text = "Bulk" }
     dlg:entry{ id = "bulkNames", label = "Add:", text = "" }
-    dlg:combobox{ id = "bulkKind", label = "Kind:", options = { "outfit", "effect" } }
     dlg:button{ id = "bulkBtn", text = "Add to All Parts", onclick = function() dlg:close() end }
 
     dlg:separator()
@@ -686,7 +666,7 @@ function blueprintEditor._editOutfits(spr)
 
     if dlg.data.addBtn then
       if part then
-        local kind = (dlg.data.addKind or "outfit") == "effect" and "state" or "variant"
+        local kind = "variant"
         for _, name in ipairs(parseList(dlg.data.addNames, "")) do
           if name ~= "base" then
             for _, slot in ipairs(part.slots or {}) do
@@ -719,7 +699,7 @@ function blueprintEditor._editOutfits(spr)
         end
       end
     elseif dlg.data.bulkBtn then
-      local kind = (dlg.data.bulkKind or "outfit") == "effect" and "state" or "variant"
+      local kind = "variant"
       for _, p in ipairs(schema.body_parts or {}) do
         for _, name in ipairs(parseList(dlg.data.bulkNames, "")) do
           if name ~= "base" then
@@ -870,7 +850,7 @@ function blueprintEditor.showEditAnimationDialog()
   local animName = data.animation_name or ""
 
   local dlg = Dialog{ title = "Edit: " .. animName }
-  dlg:button{ id = "editOutfits", text = "Edit Outfits / Effects", onclick = function() dlg:close() end }
+  dlg:button{ id = "editOutfits", text = "Edit Outfits", onclick = function() dlg:close() end }
   dlg:button{ id = "editParts", text = "Edit Parts", onclick = function() dlg:close() end }
   if hasBlueprintFile then
     dlg:check{ id = "applyToBlueprint", label = "Apply to blueprint too", selected = false }
@@ -927,7 +907,6 @@ function blueprintEditor._editAnimOutfits(animSprite, data, applyToBp, bpPath)
 
     local part = findNamedItem(schema.body_parts, selectedPartName)
     local outfits = part and partVariantNames(part, "variant") or {}
-    local effects = part and partVariantNames(part, "state") or {}
     local removeOpts = part and partVariantNames(part) or {}
 
     local dlg = Dialog{ title = "Outfits: " .. selectedPartName }
@@ -939,12 +918,10 @@ function blueprintEditor._editAnimOutfits(animSprite, data, applyToBp, bpPath)
 
     local allVariants = {}
     for _, name in ipairs(outfits) do allVariants[#allVariants + 1] = name .. " (outfit)" end
-    for _, name in ipairs(effects) do allVariants[#allVariants + 1] = name .. " (effect)" end
-    dlg:separator{ text = "Outfits & Effects" }
+    dlg:separator{ text = "Outfits" }
     dialogUtils.scrollableList(dlg, "variantsList", 320, math.min(70, math.max(28, #allVariants * 14 + 12)), allVariants, "(base only)")
 
     dlg:entry{ id = "addNames", label = "Add:", text = "" }
-    dlg:combobox{ id = "addKind", label = "Kind:", options = { "outfit", "effect" } }
     dlg:button{ id = "addBtn", text = "Add to " .. selectedPartName, onclick = function() dlg:close() end }
 
     if #removeOpts > 0 then
@@ -958,7 +935,7 @@ function blueprintEditor._editAnimOutfits(animSprite, data, applyToBp, bpPath)
 
     if dlg.data.addBtn then
       if part then
-        local kind = (dlg.data.addKind or "outfit") == "effect" and "state" or "variant"
+        local kind = "variant"
         for _, name in ipairs(parseList(dlg.data.addNames, "")) do
           if name ~= "base" then
             for _, slot in ipairs(part.slots or {}) do
